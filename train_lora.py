@@ -29,7 +29,8 @@ from trl import SFTTrainer, SFTConfig
 BASE       = os.environ.get("BASE", "/mnt/e/VMOS_workspace/model_tuning")
 MODEL_PATH = os.path.join(BASE, "models/Qwen3.5-4B")
 DATA_PATH  = os.path.join(BASE, "alpaca_zh/alpaca_data_zh_51k.json")
-OUTPUT_DIR = os.path.join(BASE, "outputs/qwen35-4b-lora")
+# 输出写进 WSL 原生 ext4 家目录，避免 /mnt/e 上 torch.save 写 zip 损坏（9P 文件系统 bug）
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/home/fanta/ft_outputs/qwen35-4b-lora")
 
 # ---------------- 关键超参 (8GB 场景) ----------------
 MAX_SEQ_LEN = 2048      # 4B 在 8GB 上可到 2048; 爆显存就降到 1024
