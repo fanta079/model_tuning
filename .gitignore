@@ -1,0 +1,26 @@
+# ---- 大文件: 模型 / 数据 / 训练产物 (不纳入版本控制) ----
+models/
+alpaca_zh/
+outputs/
+unsloth_compiled_cache/
+
+# ---- 模型与数据文件兜底 (防止误放到其他目录) ----
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.tar
+*.vhdx
+
+# ---- 工具与 IDE ----
+.idea/
+.vscode/
+.workbuddy/
+
+# ---- 系统垃圾 ----
+Thumbs.db
+.DS_Store
+__pycache__/
+*.pyc
