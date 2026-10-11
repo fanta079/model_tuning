@@ -33,24 +33,54 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 )
 FastLanguageModel.for_inference(model)   # 切到推理模式 (比训练模式快)
 
+# Qwen3.5 是多模态模型, from_pretrained 返回的 "tokenizer" 实为 Processor;
+# 取其底层纯文本 tokenizer, 否则 tok(text) 会把文本当作 images 参数去解码成图片。
+# Processor 有 .tokenizer 属性; 若本就是普通 tokenizer 则 getattr 返回自身。
+tok = getattr(tokenizer, "tokenizer", tokenizer)
+
+# 终止符: Qwen 系用 <|im_end|> (部分版本还有 <|endoftext|>), 显式给上防止续写
+EOS_IDS = [tok.convert_tokens_to_ids(t) for t in ("<|im_end|>", "<|endoftext|>")]
+EOS_IDS = [i for i in EOS_IDS if isinstance(i, int) and i >= 0]
+PAD_ID  = tok.pad_token_id if tok.pad_token_id is not None else (EOS_IDS[0] if EOS_IDS else 0)
+
+# 兜底截断标记: 一旦出现说明模型开始编造下一轮对话, 只保留第一轮回答
+STOP_MARKS = ("<|im_end|>", "\nuser", "\nassistant", "\nUser", "\nAssistant")
+
+
+def render(msgs):
+    """渲染 chat 模板; 优先关闭思考链, 模板不支持 enable_thinking 时回退。"""
+    try:
+        return tokenizer.apply_chat_template(
+            msgs, add_generation_prompt=True, tokenize=False,
+            enable_thinking=False)
+    except Exception:
+        return tokenizer.apply_chat_template(
+            msgs, add_generation_prompt=True, tokenize=False)
+
 
 def generate(prompt):
-    msgs = [{"role": "user", "content": prompt}]
-    # 第一步: 只渲染成 chat 模板文本 (返回 str)
-    text = tokenizer.apply_chat_template(
-        msgs, add_generation_prompt=True, tokenize=False
-    )
-    # 第二步: 文本 -> 张量 (返回 BatchEncoding, 才有 .to())
-    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+    text = render([{"role": "user", "content": prompt}])
+    if os.environ.get("DEBUG_PROMPT") == "1":
+        print("---- 实际送入模型的文本 ----")
+        print(repr(text))
+        print("---------------------------")
+    # 用纯文本 tokenizer 编码 -> 张量 (BatchEncoding 才有 .to())
+    inputs = tok(text, return_tensors="pt").to(model.device)
     out = model.generate(
         **inputs,
         max_new_tokens = MAX_NEW,
         do_sample      = True,
         temperature    = 0.7,
         top_p          = 0.9,
+        eos_token_id   = EOS_IDS or None,   # 关键: 显式终止符, 否则会一直续写
+        pad_token_id   = PAD_ID,
     )
-    return tokenizer.decode(out[0][inputs["input_ids"].shape[1]:],
-                            skip_special_tokens=True).strip()
+    ans = tok.decode(out[0][inputs["input_ids"].shape[1]:],
+                     skip_special_tokens=True).strip()
+    for m in STOP_MARKS:                    # 兜底: 只保留第一轮回答
+        if m in ans:
+            ans = ans.split(m)[0].strip()
+    return ans
 
 
 for i, p in enumerate(PROMPTS, 1):

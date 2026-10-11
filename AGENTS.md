@@ -33,11 +33,17 @@ model_tuning/
 │   └── Qwen3.5-9B-GGUF/          推理模型 (Qwen3.5-9B-UD-Q4_K_XL.gguf + mmproj-F16.gguf)
 ├── outputs/                      (训练产物, 首次训练后生成)
 ├── setup-ml-env-uv.sh            WSL 环境一键安装 (uv 版, 幂等可重跑)
+├── setup_weclone.sh              WeClone 独立环境一键搭建 (⚠️ 勿与 ~/venvs/ft 混装, 依赖冲突)
 ├── train_lora.py                 QLoRA 微调脚本 (Unsloth, 8GB 调优)
+├── infer_lora.py                 加载 LoRA 对比「微调前 vs 微调后」
+├── chat_lora.py                  多轮对话 + 流式输出 终端 REPL (加载 LoRA)
+├── memory.py                     Markdown 外挂长期记忆模块 (纯标准库)
+├── memory.md                     外挂记忆本体 (可直接编辑)
 ├── run_chat.sh                   9B GGUF 聊天服务启动 (llama-server)
 ├── unsloth_compiled_cache/       Unsloth 内核编译缓存 (自动生成, 勿提交)
 ├── docs/                         📚 项目文档 (新文档一律放这里)
-│   └── 踩坑记录.md                17 条已解决的环境/数据/训练坑, 排查问题先查
+│   ├── 踩坑记录.md                17 条已解决的环境/数据/训练坑, 排查问题先查
+│   └── WeClone-数字分身落地.md      用聊天记录微调"数字分身"的落地方案 (独立 venv, 勿与 ~/venvs/ft 混装)
 └── .workbuddy/memory/            Agent 工作日志 (YYYY-MM-DD.md, 追加式)
 ```
 
@@ -62,6 +68,10 @@ bash /mnt/e/VMOS_workspace/model_tuning/setup-ml-env-uv.sh
 source ~/venvs/ft/bin/activate
 python /mnt/e/VMOS_workspace/model_tuning/train_lora.py          # 冒烟
 SMOKE_TEST=0 python /mnt/e/VMOS_workspace/model_tuning/train_lora.py   # 全量
+
+# 终端多轮对话 (加载微调后的 LoRA, 流式输出; 会话内 /reset 清空, /exit 退出)
+python /mnt/e/VMOS_workspace/model_tuning/chat_lora.py
+ADAPTER=/mnt/e/VMOS_workspace/model_tuning/models/Qwen3.5-4B python chat_lora.py   # 不加载 LoRA, 跑底座
 
 # 聊天 (9B GGUF, llama.cpp llama-server, 自带 Web UI)
 bash /mnt/e/VMOS_workspace/model_tuning/run_chat.sh              # 16k 上下文

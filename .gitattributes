@@ -1,0 +1,5 @@
+# 本仓库同时在 Windows 与 WSL 两侧使用。
+# .sh 脚本必须保持 LF —— 否则在 WSL（bash）里执行会报：
+#     $'\r': command not found  /  bad interpreter: No such file or directory
+# Windows 侧 git 默认 autocrlf=true 会在检出时把 LF 换成 CRLF，这里显式覆盖。
+*.sh text eol=lf

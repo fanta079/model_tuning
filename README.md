@@ -12,8 +12,12 @@
 | 文件 | 作用 |
 |---|---|
 | `setup-ml-env-uv.sh` | WSL 环境一键安装（uv 版，幂等可重跑） |
+| `setup_weclone.sh` | WeClone 数字分身环境一键搭建（**独立 .venv**，与主环境隔离）|
 | `train_lora.py` | QLoRA 微调脚本（8GB 调优，默认 500 条冒烟，`SMOKE_TEST=0` 跑全量） |
 | `infer_lora.py` | 加载 LoRA adapter，对比「微调前 vs 微调后」 |
+| `chat_lora.py` | **多轮对话 + 流式输出**终端 REPL（加载 LoRA，带上下文记忆）|
+| `memory.py` | Markdown 外挂长期记忆模块（纯标准库，可单独命令行使用）|
+| `memory.md` | 外挂记忆本体 —— 直接编辑这个文件即可让模型"记住" |
 | `run_chat.sh` | 启动 9B GGUF 聊天服务（llama-server，自带 Web UI） |
 | `docs/踩坑记录.md` | 踩坑合集（持续更新） |
 | `AGENTS.md` | 项目导航手册：结构 / 环境 / 命令 / 约定 |
@@ -34,6 +38,10 @@ SMOKE_TEST=0 python train_lora.py
 
 # 4) 对比微调前后
 python infer_lora.py
+
+# 5) 终端多轮对话（流式输出，加载微调后的 LoRA）
+#    会话内: /reset 清空上下文, /exit 退出
+python chat_lora.py
 ```
 
 ## 硬件与显存约束
