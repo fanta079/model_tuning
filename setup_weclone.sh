@@ -55,7 +55,49 @@ step "3/6 安装主依赖（清华镜像，较慢请耐心）"
 uv pip install --group main -e . -i "$MIRROR"
 
 step "4/6 安装中文脱敏模型（Presidio 需要）"
-uv pip install https://github.com/explosion/spacy-models/releases/download/zh_core_web_sm-3.8.0/zh_core_web_sm-3.8.0-py3-none-any.whl
+# 注意: spaCy 模型只发布在 GitHub Releases。
+#   PyPI 上的同名包 zh-core-web-sm 是「防依赖混淆」的占位包(版本 999.9.9)，装了没用！
+#   国内直连 GitHub Releases 常超时 -> 这里依次尝试加速代理，失败也只告警不中断。
+WHL="zh_core_web_sm-3.8.0-py3-none-any.whl"
+GH="explosion/spacy-models/releases/download/zh_core_web_sm-3.8.0/${WHL}"
+TMP_WHL="${TMPDIR:-/tmp}/${WHL}"
+URLS=(
+    "https://ghfast.top/https://github.com/${GH}"
+    "https://ghproxy.net/https://github.com/${GH}"
+    "https://hk.gh-proxy.com/https://github.com/${GH}"
+    "https://github.com/${GH}"
+)
+
+spacy_ok=0
+if python -c "import spacy; spacy.load('zh_core_web_sm')" >/dev/null 2>&1; then
+    echo "zh_core_web_sm 已安装，跳过。"
+    spacy_ok=1
+else
+    for u in "${URLS[@]}"; do
+        echo "尝试下载源: $u"
+        if curl -fL --retry 3 --retry-delay 2 -m 300 -o "$TMP_WHL" "$u" 2>/dev/null; then
+            if uv pip install "$TMP_WHL" >/dev/null 2>&1; then
+                spacy_ok=1
+                break
+            fi
+        fi
+    done
+fi
+
+if [ "$spacy_ok" = 1 ]; then
+    python - <<'EOF'
+import spacy
+nlp = spacy.load("zh_core_web_sm")
+print("spaCy 版本 :", spacy.__version__)
+print("中文模型   : zh_core_web_sm 可用")
+EOF
+else
+    echo
+    echo "[警告] 中文脱敏模型没装上（网络问题，不影响后续步骤继续跑）。"
+    echo "       影响: WeClone 的 Presidio 中文 PII 识别会不可用。"
+    echo "       兜底: 在 settings.jsonc 的 blocked_words 里手动列敏感词。"
+    echo "       重试: 见 docs/WeClone-数字分身落地.md 第 7 节坑清单。"
+fi
 
 step "5/6 生成配置文件"
 if [ -f settings.jsonc ]; then

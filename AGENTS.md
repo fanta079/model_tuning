@@ -32,18 +32,35 @@ model_tuning/
 │   ├── Qwen3.5-4B/               微调基座 (BF16 safetensors, 完整)
 │   └── Qwen3.5-9B-GGUF/          推理模型 (Qwen3.5-9B-UD-Q4_K_XL.gguf + mmproj-F16.gguf)
 ├── outputs/                      (训练产物, 首次训练后生成)
+├── my_data/                      🔒 个人训练数据 (含聊天记录/人设数据, 已 gitignore, 绝不入库)
+│
+├── 数据生产 ─────────────────────────────────────────────
+│   ├── personas/                 🎭 人设卡 + 场景矩阵 + 评测题集
+│   │   ├── haibara.md              人设卡 (角色 E.V., 性格取自灰原哀; 含称呼规则)
+│   │   ├── haibara_scenes.json     场景矩阵 (~18000 组合) + 种子样本
+│   │   └── haibara_eval.json       25 题固定评测集 (改了就失去可比性)
+│   ├── gen_persona_data.py       人设数据批量生成器 (人设卡 + 场景矩阵 + 种子锚定)
+│   ├── wechat_to_weclone.py      微信导出 -> WeClone CSV (9 列, 自动识别列名/类型)
+│   ├── wechat_paste_to_json.py   微信 PC 复制文本 -> conversations JSON (安全, 免解密工具)
+│   └── prepare_data.py           通用: 校验/清洗/去重/划分 (支持 Alpaca / ShareGPT / 对话)
+│
+├── 训练与使用 ───────────────────────────────────────────
+│   ├── train_lora.py             QLoRA 微调 (Unsloth, 8GB 调优; DATA_FORMAT=chat 支持多轮)
+│   ├── infer_lora.py             加载 LoRA 对比「微调前 vs 微调后」
+│   ├── chat_lora.py              多轮对话 + 流式输出 终端 REPL (加载 LoRA)
+│   ├── memory.py                 Markdown 外挂长期记忆模块 (纯标准库)
+│   ├── memory.md                 外挂记忆本体 (🔒 个人内容, 已 gitignore)
+│   ├── eval_persona.py           人设评测: 跑固定题集, 自动标注「崩人设」
+│   ├── export_gguf.py            合并 LoRA 并导出 GGUF (日常用 llama.cpp 跑)
+│   └── run_chat.sh               9B GGUF 聊天服务启动 (llama-server)
+│
 ├── setup-ml-env-uv.sh            WSL 环境一键安装 (uv 版, 幂等可重跑)
 ├── setup_weclone.sh              WeClone 独立环境一键搭建 (⚠️ 勿与 ~/venvs/ft 混装, 依赖冲突)
-├── train_lora.py                 QLoRA 微调脚本 (Unsloth, 8GB 调优)
-├── infer_lora.py                 加载 LoRA 对比「微调前 vs 微调后」
-├── chat_lora.py                  多轮对话 + 流式输出 终端 REPL (加载 LoRA)
-├── memory.py                     Markdown 外挂长期记忆模块 (纯标准库)
-├── memory.md                     外挂记忆本体 (可直接编辑)
-├── run_chat.sh                   9B GGUF 聊天服务启动 (llama-server)
 ├── unsloth_compiled_cache/       Unsloth 内核编译缓存 (自动生成, 勿提交)
 ├── docs/                         📚 项目文档 (新文档一律放这里)
 │   ├── 踩坑记录.md                17 条已解决的环境/数据/训练坑, 排查问题先查
-│   └── WeClone-数字分身落地.md      用聊天记录微调"数字分身"的落地方案 (独立 venv, 勿与 ~/venvs/ft 混装)
+│   ├── WeClone-数字分身落地.md      聊天记录微调数字分身方案 (独立 venv, 含微信导出格式)
+│   └── 人设数据生产指南.md          从人设卡到可对话模型的完整流水线
 └── .workbuddy/memory/            Agent 工作日志 (YYYY-MM-DD.md, 追加式)
 ```
 

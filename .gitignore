@@ -13,6 +13,19 @@ unsloth_compiled_cache/
 *.ckpt
 *.tar
 *.vhdx
+*.whl
+
+# ---- 外挂记忆: 会积累个人内容, 不入库 (文件缺失时 memory.py 会自动重建模板) ----
+memory.md
+
+# ---- 个人训练数据: 会包含聊天记录等私人内容, 绝不入库 ----
+my_data/
+wechat_data/
+
+# ---- 密钥: API key 等凭证绝不入库 (用环境变量传) ----
+.env
+.env*
+*.key
 
 # ---- 工具与 IDE ----
 .idea/

@@ -13,13 +13,24 @@
 |---|---|
 | `setup-ml-env-uv.sh` | WSL 环境一键安装（uv 版，幂等可重跑） |
 | `setup_weclone.sh` | WeClone 数字分身环境一键搭建（**独立 .venv**，与主环境隔离）|
-| `train_lora.py` | QLoRA 微调脚本（8GB 调优，默认 500 条冒烟，`SMOKE_TEST=0` 跑全量） |
+| **数据生产** | |
+| `personas/` | 人设卡 + 场景矩阵 + 评测题集（`haibara.md` / `haibara_scenes.json` / `haibara_eval.json`）|
+| `gen_persona_data.py` | **人设数据批量生成器**：人设卡 + 场景矩阵 + 种子锚定 |
+| `prepare_data.py` | 通用数据 校验 / 清洗 / 去重 / 划分（支持 Alpaca、ShareGPT、对话三种格式）|
+| `wechat_to_weclone.py` | 微信导出 → WeClone 训练用 CSV（自动识别列名与消息类型）|
+| `wechat_paste_to_json.py` | 微信 PC 端**复制粘贴**的文本 → 训练用 JSON（免解密工具，最安全）|
+| **训练与使用** | |
+| `train_lora.py` | QLoRA 微调（8GB 调优；`DATA_FORMAT=chat` 支持多轮对话）|
 | `infer_lora.py` | 加载 LoRA adapter，对比「微调前 vs 微调后」 |
-| `chat_lora.py` | **多轮对话 + 流式输出**终端 REPL（加载 LoRA，带上下文记忆）|
-| `memory.py` | Markdown 外挂长期记忆模块（纯标准库，可单独命令行使用）|
-| `memory.md` | 外挂记忆本体 —— 直接编辑这个文件即可让模型"记住" |
+| `chat_lora.py` | **多轮对话 + 流式输出**终端 REPL |
+| `memory.py` / `memory.md` | Markdown 外挂长期记忆（个人内容，不入库）|
+| `eval_persona.py` | **人设评测**：跑固定题集，自动标注「崩人设」 |
+| `export_gguf.py` | 合并 LoRA 并导出 GGUF（日常用 llama.cpp 跑）|
 | `run_chat.sh` | 启动 9B GGUF 聊天服务（llama-server，自带 Web UI） |
+| **文档** | |
 | `docs/踩坑记录.md` | 踩坑合集（持续更新） |
+| `docs/WeClone-数字分身落地.md` | 聊天记录微调数字分身方案 |
+| `docs/人设数据生产指南.md` | 从人设卡到可对话模型的完整流水线 |
 | `AGENTS.md` | 项目导航手册：结构 / 环境 / 命令 / 约定 |
 
 ## 快速开始

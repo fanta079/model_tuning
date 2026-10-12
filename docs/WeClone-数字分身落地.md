@@ -93,7 +93,55 @@ modelscope download --model Qwen/Qwen2.5-7B-Instruct --local_dir ./models/Qwen2.
 > `id, MsgSvrID, type_name, is_sender, talker, msg, src, CreateTime, room_name`
 > 其中 `is_sender`：**0 = 对方，1 = 自己**
 >
-> → 把一份**脱敏样例**（几行，真实内容替换掉）发我，我按这个结构给你写转换脚本。
+> → 已确认输入目录与格式，见下方 2.3。
+
+### 2.3 微信 CSV 的确切格式（已核实）
+
+**输入目录：`dataset/wechat/`**（从仓库 `.gitignore` 的 `dataset/wechat/*` 确认）
+
+**表头固定 9 列**（样例取自仓库自带的 `tests/tests_data/test_person/test_0_730.csv`）：
+
+```csv
+id,MsgSvrID,type_name,is_sender,talker,room_name,msg,src,CreateTime
+7,4073926741244663531,文本,1,12345iru2zsmo22,test_person,小马尔代夫,,2024/10/4 11:43
+9,2122553892045962801,文本,0,test_person,test_person,我去 好可爱啊,,2024/10/4 11:43
+1,7437267147299592543,图片,0,12345iru2zsmo22,test_person,图片,File\...\Image\...dat,2024/10/4 11:42
+```
+
+| 列 | 含义 | 注意 |
+|---|---|---|
+| `type_name` | 消息类型 | **中文**：文本 / 图片 / 动画表情 / 系统通知 / 引用回复… |
+| `is_sender` | 谁发的 | **1 = 你自己，0 = 对方** |
+| `talker` | 发送者 ID | `is_sender=1` 时是**你自己的 ID** |
+| `room_name` | 会话名 | 一般就是对方昵称 |
+| `src` | 媒体路径 | 文本消息留空 |
+| `CreateTime` | 时间 | 形如 `2024/10/4 11:43` |
+
+### 2.4 用转换脚本生成（PyWxDump 直接导出不行）
+
+PyWxDump 的原始 CSV 列名是 `localId / Type / IsSender / StrContent / StrTalker`，
+而 `Type` 是**数字**，WeClone 要的是中文 `type_name` —— 所以必须转一次。
+
+本仓库提供 `wechat_to_weclone.py`：
+
+```bash
+# 自动识别列名 + 自动推断"我"和会话名
+python wechat_to_weclone.py 导出.csv --out-dir <WeClone目录>/dataset/wechat
+
+# 更稳的做法：显式指定"我"和会话名
+python wechat_to_weclone.py 导出.csv \
+    --me "我的微信昵称" --room "对方昵称" \
+    --out-dir <WeClone目录>/dataset/wechat
+
+# 列名太怪就手动映射（可多次）
+python wechat_to_weclone.py 导出.csv --map "内容=StrContent" --map "时间=CreateTime"
+
+# 不放心先自测看看输出长什么样
+python wechat_to_weclone.py --selftest
+```
+
+脚本会打印列映射表 + 统计（有效消息数 / 你说的 / 对方说的 / 跳过数），
+若出现"全是同一个人说的"会告警，说明 `--me` 判断错了。
 
 ---
 
@@ -196,6 +244,8 @@ weclone-cli test-model                          # 内置闲聊题测试 → test
 | flash-attn | 先别装，8GB 上收益有限还折腾 |
 | 7B 效果一般 | 官方自己写「7B 效果一般，14B+ 更好」——你 8GB 只能 7B/3B，**预期要放低** |
 | 群聊数据 | 会学成"混合声线"，建议只用 1v1 |
+| **spaCy 中文模型下载超时** | spaCy 模型只发在 GitHub Releases，国内常连不上；**PyPI 上的同名包 `zh-core-web-sm` 是版本 999.9.9 的占位诱饵，装了没用**。解法：走加速代理 `https://ghfast.top/https://github.com/...`（`setup_weclone.sh` 第 4 步已自动依次重试多个源）|
+| spaCy 版本不匹配 | 模型 `3.8.0` 要求 `spacy>=3.8`。装完先 `python -c "import spacy;print(spacy.__version__)"` 确认；不符就换对应版本的模型 wheel |
 
 ---
 
@@ -219,3 +269,54 @@ weclone-cli test-model                          # 内置闲聊题测试 → test
 
 **两者并存、互不干扰。** 你现有那套继续用来做话术/指令微调，
 WeClone 用来做数字分身 —— 目标不同，工具不同，环境隔离。
+
+---
+
+## 附二：本地小模型跑通全流程（先做这个）
+
+目标：**用 8GB + Qwen3.5-4B 把整条链路走通**，再去预约大卡出成品。
+
+```
+① 微信导出 CSV
+      ↓  wechat_to_weclone.py          (转成 WeClone 的 9 列格式)
+② WeClone 输入  dataset/wechat/
+      ↓  weclone-cli make-dataset      (只做数据, 不加载模型)
+③ dataset/res_csv/sft/chat-sft.json    (LLaMA-Factory sharegpt: from/value)
+      ↓  prepare_data.py               (已支持自动转 role/content)
+④ train.json / val.json                (conversations 格式)
+      ↓  train_lora.py  (Qwen3.5-4B, 冒烟 500 条)
+⑤ lora_adapter
+      ↓  chat_lora.py
+⑥ 本地对话验证
+```
+
+```bash
+# ①② 转格式并放进 WeClone 输入目录
+python /mnt/e/VMOS_workspace/model_tuning/wechat_to_weclone.py 导出.csv \
+    --me "我的昵称" --room "对方昵称" \
+    --out-dir ~/WeClone/dataset/wechat
+
+# ③ WeClone 数据管线（在 WeClone 自己的环境里跑）
+cd ~/WeClone && source .venv/bin/activate
+weclone-cli make-dataset
+deactivate
+
+# ④ 转格式 + 去重 + 划分（纯标准库，任意环境都能跑）
+python /mnt/e/VMOS_workspace/model_tuning/prepare_data.py \
+    ~/WeClone/dataset/res_csv/sft/chat-sft.json \
+    --out-dir /mnt/e/VMOS_workspace/model_tuning/wechat_data
+
+# ⑤ 本地冒烟训练（默认只跑 500 条）
+source ~/venvs/ft/bin/activate
+DATA_PATH=/mnt/e/VMOS_workspace/model_tuning/wechat_data/train.json \
+DATA_FORMAT=chat RESPONSES_ONLY=1 \
+SYSTEM="请你扮演一名人类，不要说自己是人工智能" \
+python /mnt/e/VMOS_workspace/model_tuning/train_lora.py
+
+# ⑥ 对话验证
+ADAPTER=/mnt/e/VMOS_workspace/model_tuning/outputs/qwen35-4b-lora/lora_adapter \
+python /mnt/e/VMOS_workspace/model_tuning/chat_lora.py
+```
+
+**跑通之后换大卡，只需要改两处**：
+`MODEL_PATH` 指向 `Qwen3.5-27B`，以及训练参数切到"大显存档"（batch 加大、关梯度检查点）。

@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 # prepare_data.py — 微调数据 校验 / 清洗 / 去重 / 划分
 #
-# 一个文件里可混用两种格式:
+# 一个文件里可混用三种格式:
 #   单轮 Alpaca : {"instruction": "...", "input": "...", "output": "..."}
 #   多轮 Chat   : {"conversations": [{"role": "...", "content": "..."}, ...]}
+#   ShareGPT    : {"conversations": [{"from": "human", "value": "..."}, ...]}
+#                 —— LLaMA-Factory / WeClone 的输出格式, 会自动转成 role/content
 #
 # 用法:
 #   python prepare_data.py customer_service/all.json
@@ -27,6 +29,28 @@ from collections import Counter
 
 MIN_REPLY, MAX_REPLY = 4, 4000          # assistant 回复的字符数合理区间
 VALID_ROLES = ("system", "user", "assistant")
+
+# ShareGPT 的 from 值 -> 统一 role（LLaMA-Factory / WeClone 用的就是这套）
+SHAREGPT_ROLE_MAP = {
+    "human": "user", "user": "user",
+    "gpt": "assistant", "assistant": "assistant", "bot": "assistant",
+    "system": "system",
+}
+
+
+def normalize(ex):
+    """把 ShareGPT 的 from/value 统一成 role/content；其他格式原样返回。"""
+    convs = ex.get("conversations") if isinstance(ex, dict) else None
+    if not isinstance(convs, list) or not convs:
+        return ex
+    first = convs[0]
+    if isinstance(first, dict) and "from" in first and "role" not in first:
+        return {"conversations": [
+            {"role": SHAREGPT_ROLE_MAP.get(str(m.get("from", "")).strip().lower(), "user"),
+             "content": str(m.get("value", m.get("content", "")) or "").strip()}
+            for m in convs
+        ]}
+    return ex
 
 
 def norm(s):
@@ -124,6 +148,7 @@ def main():
             dropped.append({"index": i, "reason": "不是对象", "raw": ex})
             reasons["不是对象"] += 1
             continue
+        ex = normalize(ex)          # ShareGPT(from/value) -> conversations(role/content)
         ok, why = check(ex)
         if not ok:
             dropped.append({"index": i, "reason": why, "sample": describe(ex)})
