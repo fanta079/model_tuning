@@ -6,15 +6,20 @@
 
 ## 1. 项目概述
 
-本地大模型**微调 + 推理**工作区，面向一张 **RTX 4060 Ti (8GB 显存)**。
+本地大模型**数据生产 + 微调 + 推理**工作区，面向一张 **RTX 4060 Ti (8GB 显存)**。
 主机为 Windows，**所有训练/推理均在 WSL2 (Ubuntu 24.04) 内运行**；模型与数据存放在 Windows E 盘，WSL 通过 `/mnt/e/...` 访问。
 
-两条主线：
+**当前主目标**：造一个**人设扮演模型**（角色 `E.V.`，性格取自灰原哀），并长期使用其 LoRA adapter。
+
+三条主线：
 
 | 主线 | 基座 | 用途 | 工具 |
 |---|---|---|---|
-| 微调 | `unsloth/Qwen3.5-4B` (BF16, 8.8GB) | QLoRA 指令微调 | Unsloth + TRL |
-| 聊天推理 | `unsloth/Qwen3.5-9B-GGUF` (Q4_K_XL, 5.6GB) | 本地对话 | llama.cpp `llama-server` |
+| **数据生产** | — | 人设数据生成 / 微信记录清洗 / 划分 | `gen_persona_data.py`、`wechat_paste_to_json.py`、`prepare_data.py` |
+| **微调** | `unsloth/Qwen3.5-4B` (BF16, 8.8GB) | QLoRA 人设 · 风格微调 | Unsloth + TRL |
+| **推理** | `unsloth/Qwen3.5-9B-GGUF` (Q4_K_XL, 5.6GB) | 本地对话 | llama.cpp `llama-server` |
+
+> 📘 做人设数据前**务必先读** `docs/人设数据生产指南.md` —— 里面记录了「同批同质」「比例靠措辞失效」两个必踩的坑。
 
 ## 2. 硬件与环境
 
@@ -80,22 +85,58 @@ bash /mnt/e/VMOS_workspace/model_tuning/setup-ml-env-uv.sh
 
 ## 5. 常用命令 (WSL 内)
 
+### 数据生产
+
 ```bash
-# 微调（默认 500 条冒烟测试；SMOKE_TEST=0 跑全量 51k）
+# 人设数据: 人设卡 + 场景矩阵 -> 批量生成 (需 OpenAI 兼容 API)
+python gen_persona_data.py --dry-run                 # 先看提示词, 不花钱, 不需 key
+export OPENAI_API_KEY=sk-xxx                         # key 只走环境变量, 不写入文件
+python gen_persona_data.py \
+    --api-base https://api.deepseek.com/v1 --model deepseek-chat \
+    --seed-file my_data/ev_manual_40.json --num-seeds 20 \
+    --n 360 --per-call 12 --out my_data/ev_api.json  # 中断后重跑同一条即续传
+
+# 微信记录 (免解密工具, 最安全): PC 端复制粘贴 -> txt
+python wechat_paste_to_json.py my_data/chat1.txt --me "你的微信昵称" --probe  # 先探测
+python wechat_paste_to_json.py my_data/ --me "你的微信昵称"                   # 整目录批量转换
+
+# 通用: 校验 / 去重 / 划分 (支持 Alpaca / ShareGPT / 对话 三种格式混用)
+python prepare_data.py my_data/ev_all.json --out-dir my_data/ev --keep-dropped
+```
+
+### 训练
+
+```bash
 source ~/venvs/ft/bin/activate
-python /mnt/e/VMOS_workspace/model_tuning/train_lora.py          # 冒烟
-SMOKE_TEST=0 python /mnt/e/VMOS_workspace/model_tuning/train_lora.py   # 全量
+python train_lora.py                                  # 冒烟 500 条
+SMOKE_TEST=0 python train_lora.py                     # 全量 (默认 alpaca_zh 51k)
 
-# 终端多轮对话 (加载微调后的 LoRA, 流式输出; 会话内 /reset 清空, /exit 退出)
-python /mnt/e/VMOS_workspace/model_tuning/chat_lora.py
-ADAPTER=/mnt/e/VMOS_workspace/model_tuning/models/Qwen3.5-4B python chat_lora.py   # 不加载 LoRA, 跑底座
+# 训多轮人设数据 (换 OUTPUT_DIR 版本号, 别覆盖旧 adapter):
+DATA_PATH=/mnt/e/VMOS_workspace/model_tuning/my_data/ev/train.json \
+DATA_FORMAT=chat RESPONSES_ONLY=1 NUM_EPOCHS=5 \
+OUTPUT_DIR=/home/fanta/ft_outputs/ev-v1 SMOKE_TEST=0 \
+nohup python train_lora.py > ~/train_ev_v1.log 2>&1 &
+```
 
-# 聊天 (9B GGUF, llama.cpp llama-server, 自带 Web UI)
-bash /mnt/e/VMOS_workspace/model_tuning/run_chat.sh              # 16k 上下文
-CTX=32768 bash run_chat.sh                                       # 更长上下文
-ENABLE_VISION=1 bash run_chat.sh                                 # 启用看图 (多占 ~900MB 显存)
+### 评测 / 使用
 
-# 下载模型/数据集 (ModelScope, python 版)
+```bash
+# 人设评测: 跑固定题集, 并排对比「底座 vs 微调后」, 自动标注崩人设
+python eval_persona.py --compare --adapter /home/fanta/ft_outputs/ev-v1/lora_adapter
+
+# 终端多轮对话 (流式; 会话内 /reset 清空上下文, /remember 记一条, /exit 退出)
+python chat_lora.py
+ADAPTER=/mnt/e/VMOS_workspace/model_tuning/models/Qwen3.5-4B python chat_lora.py  # 跑底座
+
+# 导出 GGUF 供 llama.cpp 日常使用 (启动快、显存低、能接任意前端)
+python export_gguf.py --adapter /home/fanta/ft_outputs/ev-v1/lora_adapter --out ~/gguf/ev
+
+# 9B GGUF 聊天服务 (自带 Web UI)
+bash run_chat.sh                                     # 16k 上下文
+CTX=32768 bash run_chat.sh                           # 更长上下文
+ENABLE_VISION=1 bash run_chat.sh                     # 启用看图 (多占 ~900MB 显存)
+
+# 下载模型/数据集 (ModelScope)
 python -c "from modelscope import snapshot_download; \
 snapshot_download('unsloth/Qwen3.5-9B-GGUF', local_dir='models/Qwen3.5-9B-GGUF', \
 allow_patterns=['Qwen3.5-9B-UD-Q4_K_XL.gguf','mmproj-F16.gguf'])"   # 只拉指定文件
@@ -114,9 +155,27 @@ OOM 时降 `MAX_SEQ_LEN` → 1024 或调低 `-ngl`。
 
 ## 7. 数据与格式
 
-- 微调数据: `alpaca_zh/alpaca_data_zh_51k.json`，JSON 数组，字段 `instruction / input / output`（Alpaca 格式，中文，51155 条）
-- `train_lora.py` 内置 `to_text()` 已将其转为 Qwen chat 模板文本，换数据集时改 `DATA_PATH` 并保持该字段结构
-- 训练产物: `outputs/qwen35-4b-lora/lora_adapter/`
+两条数据来源，最终都归一到 **`conversations(role/content)`** 格式喂给 `train_lora.py`：
+
+| 来源 | 工具 | 说明 |
+|---|---|---|
+| **人设生成** | `gen_persona_data.py` | 人设卡 + 场景矩阵 + 种子锚定；完整流程见 `docs/人设数据生产指南.md` |
+| **微信记录** | `wechat_paste_to_json.py` | PC 端复制粘贴，免解密工具（PyWxDump 原项目已删库，现存同名仓库多为钓鱼）|
+
+`prepare_data.py` 统一做校验 / 去重 / 划分，**支持三种输入格式混用**：
+
+- 单轮 Alpaca：`{"instruction", "input", "output"}`
+- 对话：`{"conversations":[{"role","content"}]}`
+- ShareGPT：`{"conversations":[{"from","value"}]}`（LLaMA-Factory / WeClone 的输出）
+
+产物：`train.json` / `val.json`。**val 是 holdout，绝不混入训练**。
+
+其他：
+
+- 通用指令数据：`alpaca_zh/`（51155 条，Alpaca 格式）
+- 训练产物：由 `OUTPUT_DIR` 决定，**建议按版本号区分**（`ev-v1` / `ev-v2`），训崩了能回滚
+- 评测题集：`personas/haibara_eval.json`（25 题）—— **不要修改**，改了就失去纵向可比性
+- 🔒 `my_data/`、`wechat_data/`、`memory.md` 含个人内容，**已 gitignore**
 
 ## 8. 约定与坑
 
@@ -128,3 +187,11 @@ OOM 时降 `MAX_SEQ_LEN` → 1024 或调低 `-ngl`。
 6. `models/`、`outputs/`、`unsloth_compiled_cache/` 体量大，勿纳入版本控制。
 7. WSL 内 **不要** 装 NVIDIA 驱动，用宿主驱动直通；`nvidia-smi` 应能看到 4060 Ti。
 8. **Git LFS 指针陷阱**：clone 含大文件的仓库前确认已执行 `git lfs install`。若文件仅百余字节且开头是 `version https://git-lfs...`，那是 LFS 指针不是本体，解析会报 `Invalid value` —— 用 ModelScope `/resolve/` 直链重下并对照指针里的 sha256 校验（详见 `docs/踩坑记录.md` 第 12 条）。数据集下载一律到新目录，禁止覆盖已有文件。
+9. **比例类要求必须做成「维度」，不能靠 prompt 措辞**。实测：人设卡写「约 10% 会叫名字」，生成 240 条结果**叫名字 0 条**——模型把"稀有"理解成了"不用"。改成场景矩阵里的 `call_names` 维度（9 项不叫 + 1 项叫）后，比例由结构保证。
+10. **数据生成要「一次调用下发 N 个不同任务」**。一次调用只给一个场景，会导致整批 N 条**全是同一场景**（只是换同义词）。prompt 里要写明"第 i 条对应任务 i，场景必须真正不同"。
+11. **生成完先体检，再训练**。花 10 秒统计能省几小时：assistant 回复**重复率 < 15%**、平均长度符合人设、违规数（emoji/感叹号/可爱语气词）**= 0**、关键特征比例符合设计。
+12. **`--seed-file` 是质量关键**。用手写精品当 few-shot 锚点，质量明显高于纯生成。推荐配比：**手写 10% + 机造 90%**。
+13. **`.sh` 必须保持 LF**。Windows 侧 git `autocrlf` 会在检出时转 CRLF，导致 WSL 报 `$'\r': command not found` / `bad interpreter`。仓库已用 `.gitattributes` 固定 `*.sh text eol=lf`。
+14. **API key 只走环境变量**，绝不写入任何文件。`.env` / `*.key` 已 gitignore。
+15. **训练前换 `OUTPUT_DIR`**（如 `ev-v1` / `ev-v2`）。复用同一个目录会覆盖旧 adapter，训崩了无法回滚。
+16. **个人数据目录已 gitignore**（`my_data/` / `wechat_data/` / `memory.md`）。提交前用 `git status` 确认，**不要用 `git add -f` 强加**。
