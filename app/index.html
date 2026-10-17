@@ -598,7 +598,7 @@ function drawOrb(now, amp) {
 
   octx.globalCompositeOperation = 'source-over';
 
-  // ---------------- 7) 核心球体 ----------------
+  // ---------------- 7) 核心球体（玻璃质感多层渲染）----------------
   const g = octx.createRadialGradient(
     cx - R * 0.22, cy - R * 0.26, R * 0.05, cx, cy, R);
   g.addColorStop(0,    hsla(col.h, col.s - 18, 84, 0.88));   // 中心只带一点瓷白
@@ -610,19 +610,68 @@ function drawOrb(now, amp) {
   octx.arc(cx, cy, R, 0, Math.PI * 2);
   octx.fill();
 
-  // 边缘光
+  // 7a) 右下暗月牙 —— 给球体“体积”，不然是平的
+  const sh = octx.createRadialGradient(
+    cx + R * 0.30, cy + R * 0.34, R * 0.10,
+    cx + R * 0.30, cy + R * 0.34, R * 1.05);
+  sh.addColorStop(0,    hsla(col.h, col.s + 10, 8, 0.30));
+  sh.addColorStop(0.55, hsla(col.h, col.s + 6, 10, 0.14));
+  sh.addColorStop(1,    hsla(col.h, col.s, 12, 0));
   octx.beginPath();
-  octx.strokeStyle = hsla(col.h, col.s, col.l + 14, 0.30 * hot);
-  octx.lineWidth = 1.2;
+  octx.fillStyle = sh;
   octx.arc(cx, cy, R, 0, Math.PI * 2);
-  octx.stroke();
+  octx.fill();
 
-  // ---------------- 8) 内部扫描线 + 反应堆环 ----------------
+  // ---------------- 8) 球内细节（全部裁剪在球内）----------------
   octx.save();
   octx.beginPath();
   octx.arc(cx, cy, R - 0.5, 0, Math.PI * 2);
   octx.clip();
 
+  // 8a) 经纬网 —— 绕竖轴自转的线框地球仪（JARVIS 核心感）
+  const spin = t * 0.45;
+  for (let m = 0; m < 3; m++) {
+    const rx = Math.abs(Math.cos(spin + m * Math.PI / 3)) * R * 0.86;
+    if (rx < 2) continue;
+    octx.beginPath();
+    octx.strokeStyle = hsla(col.h, col.s - 6, col.l + 20, 0.10);
+    octx.lineWidth = 1;
+    octx.ellipse(cx, cy, rx, R * 0.86, 0, 0, Math.PI * 2);
+    octx.stroke();
+  }
+  for (const fy of [-0.45, 0, 0.45]) {                 // 纬线（透视压扁）
+    const wr = R * 0.86 * Math.cos(Math.asin(fy));
+    octx.beginPath();
+    octx.strokeStyle = hsla(col.h, col.s - 6, col.l + 20, 0.08);
+    octx.lineWidth = 1;
+    octx.ellipse(cx, cy + R * 0.86 * fy, wr, wr * 0.22, 0, 0, Math.PI * 2);
+    octx.stroke();
+  }
+
+  // 8b) 内部慢转虚线环
+  octx.save();
+  octx.translate(cx, cy);
+  octx.rotate(t * 0.28);
+  octx.beginPath();
+  octx.setLineDash([1.5, 6]);
+  octx.strokeStyle = hsla(col.h, col.s, col.l + 16, 0.16);
+  octx.lineWidth = 1;
+  octx.arc(0, 0, R * 0.55, 0, Math.PI * 2);
+  octx.stroke();
+  octx.setLineDash([]);
+  octx.restore();
+
+  // 8c) 漂浮节点（5 个，缓慢漂移，随声音变亮）
+  for (let i = 0; i < 5; i++) {
+    const a = t * (0.18 + i * 0.05) + i * 2.4;
+    const rr = R * (0.35 + 0.28 * Math.sin(i * 1.7 + t * 0.4));
+    octx.beginPath();
+    octx.fillStyle = hsla(col.h, col.s, col.l + 26, 0.30 + amp * 0.30);
+    octx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.9, 1.4, 0, Math.PI * 2);
+    octx.fill();
+  }
+
+  // 8d) 扫描线
   const sy = cy - R + (((t * 0.22) % 1) * 2 * R);
   const sg = octx.createLinearGradient(0, sy - 16, 0, sy + 16);
   sg.addColorStop(0, hsla(col.h, col.s, col.l + 20, 0));
@@ -630,9 +679,50 @@ function drawOrb(now, amp) {
   sg.addColorStop(1, hsla(col.h, col.s, col.l + 20, 0));
   octx.fillStyle = sg;
   octx.fillRect(cx - R, sy - 16, 2 * R, 32);
-  octx.restore();
 
-  // 内环（像方舟反应堆）
+  // 8e) 高光斑（左上椭圆柔光 —— 玻璃球的关键）
+  octx.globalCompositeOperation = 'lighter';
+  octx.save();
+  octx.translate(cx - R * 0.34, cy - R * 0.40);
+  octx.scale(1, 0.72);
+  const hl = octx.createRadialGradient(0, 0, 0, 0, 0, R * 0.42);
+  hl.addColorStop(0,   hsla(col.h, col.s - 20, 92, 0.42 + amp * 0.15));
+  hl.addColorStop(0.5, hsla(col.h, col.s - 16, 86, 0.14));
+  hl.addColorStop(1,   hsla(col.h, col.s - 16, 86, 0));
+  octx.beginPath();
+  octx.fillStyle = hl;
+  octx.arc(0, 0, R * 0.42, 0, Math.PI * 2);
+  octx.fill();
+  octx.restore();
+  octx.globalCompositeOperation = 'source-over';
+  octx.restore();   // 解除球内裁剪
+
+  // 9) 底部反弹光（rim light，柔光晕让球“坐”在空间里）
+  octx.globalCompositeOperation = 'lighter';
+  octx.save();
+  octx.shadowBlur = R * 0.10;
+  octx.shadowColor = hsla(col.h, col.s, col.l + 20, 0.5);
+  octx.beginPath();
+  octx.strokeStyle = hsla(col.h, col.s - 4, col.l + 24, 0.20);
+  octx.lineWidth = R * 0.035;
+  octx.arc(cx, cy, R * 0.90, Math.PI * 0.25, Math.PI * 0.75);
+  octx.stroke();
+  octx.restore();
+  octx.globalCompositeOperation = 'source-over';
+
+  // 10) 边缘光（外亮线 + 内暗线，做出“壳”的厚度）
+  octx.beginPath();
+  octx.strokeStyle = hsla(col.h, col.s, col.l + 14, 0.30 * hot);
+  octx.lineWidth = 1.2;
+  octx.arc(cx, cy, R, 0, Math.PI * 2);
+  octx.stroke();
+  octx.beginPath();
+  octx.strokeStyle = hsla(col.h, col.s + 6, col.l - 18, 0.22);
+  octx.lineWidth = 1;
+  octx.arc(cx, cy, R - 2.5, 0, Math.PI * 2);
+  octx.stroke();
+
+  // 11) 反应堆内环 + 辐条
   const innerPulse = 0.5 + 0.5 * Math.sin(t * 1.6);
   octx.beginPath();
   octx.strokeStyle = hsla(col.h, col.s - 8, 82, 0.16 + innerPulse * 0.14);
