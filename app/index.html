@@ -452,10 +452,10 @@ function spectrum() {
 
 // ==================== 颜色 ====================
 const PAL = {
-  idle:      { h: 189, s: 72, l: 58 },   // 冰青
-  recording: { h: 28,  s: 88, l: 60 },   // 琥珀（录音）
-  thinking:  { h: 262, s: 68, l: 70 },   // 紫（思考）
-  speaking:  { h: 163, s: 62, l: 56 },   // 青绿（说话）
+  idle:      { h: 198, s: 44, l: 62 },   // 雾青（低饱和，耐看）
+  recording: { h: 26,  s: 72, l: 63 },   // 琥珀（录音，稍高饱和才醒目）
+  thinking:  { h: 258, s: 46, l: 70 },   // 灰紫
+  speaking:  { h: 170, s: 42, l: 60 },   // 灰青绿
 };
 
 // 尊重系统「减少动态效果」
@@ -600,11 +600,11 @@ function drawOrb(now, amp) {
 
   // ---------------- 7) 核心球体 ----------------
   const g = octx.createRadialGradient(
-    cx - R * 0.20, cy - R * 0.24, R * 0.06, cx, cy, R);
-  g.addColorStop(0,    hsla(col.h, col.s - 14, 92, 0.96));
-  g.addColorStop(0.30, hsla(col.h, col.s,      col.l + 16, 0.72));
-  g.addColorStop(0.72, hsla(col.h, col.s,      col.l - 4,  0.38));
-  g.addColorStop(1,    hsla(col.h, col.s,      col.l - 22, 0.05));
+    cx - R * 0.22, cy - R * 0.26, R * 0.05, cx, cy, R);
+  g.addColorStop(0,    hsla(col.h, col.s - 18, 84, 0.88));   // 中心只带一点瓷白
+  g.addColorStop(0.34, hsla(col.h, col.s - 2,  col.l + 8,  0.58));
+  g.addColorStop(0.74, hsla(col.h, col.s - 12, col.l - 10, 0.30));
+  g.addColorStop(1,    hsla(col.h, col.s - 14, col.l - 24, 0.03));
   octx.beginPath();
   octx.fillStyle = g;
   octx.arc(cx, cy, R, 0, Math.PI * 2);
@@ -612,8 +612,8 @@ function drawOrb(now, amp) {
 
   // 边缘光
   octx.beginPath();
-  octx.strokeStyle = hsla(col.h, col.s, col.l + 22, 0.55 * hot);
-  octx.lineWidth = 1.6;
+  octx.strokeStyle = hsla(col.h, col.s, col.l + 14, 0.30 * hot);
+  octx.lineWidth = 1.2;
   octx.arc(cx, cy, R, 0, Math.PI * 2);
   octx.stroke();
 
@@ -626,7 +626,7 @@ function drawOrb(now, amp) {
   const sy = cy - R + (((t * 0.22) % 1) * 2 * R);
   const sg = octx.createLinearGradient(0, sy - 16, 0, sy + 16);
   sg.addColorStop(0, hsla(col.h, col.s, col.l + 20, 0));
-  sg.addColorStop(0.5, hsla(col.h, col.s, col.l + 20, 0.16 + amp * 0.22));
+  sg.addColorStop(0.5, hsla(col.h, col.s, col.l + 12, 0.10 + amp * 0.16));
   sg.addColorStop(1, hsla(col.h, col.s, col.l + 20, 0));
   octx.fillStyle = sg;
   octx.fillRect(cx - R, sy - 16, 2 * R, 32);
@@ -635,15 +635,15 @@ function drawOrb(now, amp) {
   // 内环（像方舟反应堆）
   const innerPulse = 0.5 + 0.5 * Math.sin(t * 1.6);
   octx.beginPath();
-  octx.strokeStyle = hsla(col.h, col.s - 6, 96, 0.34 + innerPulse * 0.30);
-  octx.lineWidth = 1.2;
+  octx.strokeStyle = hsla(col.h, col.s - 8, 82, 0.16 + innerPulse * 0.14);
+  octx.lineWidth = 1.1;
   octx.arc(cx, cy, R * 0.30, 0, Math.PI * 2);
   octx.stroke();
 
   for (let k = 0; k < 3; k++) {
     const a = t * 0.5 + (k * Math.PI * 2) / 3;
     octx.beginPath();
-    octx.strokeStyle = hsla(col.h, col.s, 96, 0.18 + amp * 0.3);
+    octx.strokeStyle = hsla(col.h, col.s, 80, 0.10 + amp * 0.20);
     octx.lineWidth = 1;
     octx.moveTo(cx + Math.cos(a) * R * 0.16, cy + Math.sin(a) * R * 0.16);
     octx.lineTo(cx + Math.cos(a) * R * 0.28, cy + Math.sin(a) * R * 0.28);
