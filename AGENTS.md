@@ -2,7 +2,7 @@
 
 本文件是 AI Agent 在本仓库工作的操作手册：项目结构、环境、命令、约定与坑。改动结构或命令时同步更新本文件。
 
-> ⭐ **排查任何报错前，先查 `docs/踩坑记录.md`** —— 17 条已解决的实战坑（WSL/网络/环境/数据/显存），每条含现象、原因、解法。新解决的坑应追加到该文档，保持持续更新。
+> ⭐ **排查任何报错前，先查 `docs/踩坑记录.md`** —— 19 条已解决的实战坑（WSL/网络/环境/数据/显存），每条含现象、原因、解法。新解决的坑应追加到该文档，保持持续更新。
 
 ## 1. 项目概述
 
@@ -56,16 +56,36 @@ model_tuning/
 │   ├── memory.py                 Markdown 外挂长期记忆模块 (纯标准库)
 │   ├── memory.md                 外挂记忆本体 (🔒 个人内容, 已 gitignore)
 │   ├── eval_persona.py           人设评测: 跑固定题集, 自动标注「崩人设」
-│   ├── export_gguf.py            合并 LoRA 并导出 GGUF (日常用 llama.cpp 跑)
+│   ├── check_model.py            模型体检: 3 句话定「模型坏 vs 推理后端坏」
+│   ├── serve_hf.py               PyTorch+GPU 4bit 的 OpenAI 兼容服务 (替代 llama-server)
+│   ├── export_gguf.py            合并 LoRA 并导出 GGUF (⚠️ qwen35 混合架构下输出乱码, 已弃用)
 │   └── run_chat.sh               9B GGUF 聊天服务启动 (llama-server)
+│
+├── 语音助手 App (P1) ────────────────────────────────────
+│   ├── app/
+│   │   ├── server.py             后端: STT -> LLM -> TTS (FastAPI, 端口 8090)
+│   │   ├── index.html            前端: 半双工语音界面 (回完才能说下一句)
+│   │   ├── system.txt            语音专用 system prompt (禁括号动作/Markdown)
+│   │   ├── voice.json            🎭 音色配置 (voice / rate / pitch)
+│   │   ├── try_voices.py         音色试听台 (生成 8 组候选 + 可点击的试听网页)
+│   │   └── voice_samples/        试听产物 (已 gitignore, 可随时重新生成)
+│   ├── setup_app.sh              独立 venv ~/venvs/evapp + 装依赖 + 预下 whisper
+│   ├── run_app.sh                启动语音助手（前端，端口 8090）
+│   ├── start_ev.sh               一条命令起「模型服务 + 前端」，支持 --adapter / --stop
+│   ├── backup.sh                 打包「数据+配置+报告+adapter」→ artifacts/*.tar.gz
+│   └── make_data_repo.sh         导出独立数据仓（data/ + reports/ + provenance README）
 │
 ├── setup-ml-env-uv.sh            WSL 环境一键安装 (uv 版, 幂等可重跑)
 ├── setup_weclone.sh              WeClone 独立环境一键搭建 (⚠️ 勿与 ~/venvs/ft 混装, 依赖冲突)
 ├── unsloth_compiled_cache/       Unsloth 内核编译缓存 (自动生成, 勿提交)
 ├── docs/                         📚 项目文档 (新文档一律放这里)
-│   ├── 踩坑记录.md                17 条已解决的环境/数据/训练坑, 排查问题先查
+│   ├── 踩坑记录.md                19 条已解决的环境/数据/训练坑, 排查问题先查
 │   ├── WeClone-数字分身落地.md      聊天记录微调数字分身方案 (独立 venv, 含微信导出格式)
-│   └── 人设数据生产指南.md          从人设卡到可对话模型的完整流水线
+│   ├── 人设数据生产指南.md          从人设卡到可对话模型的完整流水线
+│   ├── 训练与推理脚本.md            8 个脚本逐个讲: 超参含义 / 环境变量 / 数据格式 / 坑
+│   ├── train_lora脚本导读.md        零基础逐段走读: 名词解释 + 为什么这个参数值
+│   ├── P1-语音助手.md               语音助手 App 的架构 / 音色方案 / 路线图 (含安卓目标)
+│   └── 仓库组织.md                  代码 / 数据 / 权重 三仓分离方案与版本 tag 约定
 └── .workbuddy/memory/            Agent 工作日志 (YYYY-MM-DD.md, 追加式)
 ```
 
@@ -124,6 +144,14 @@ nohup python train_lora.py > ~/train_ev_v1.log 2>&1 &
 # 人设评测: 跑固定题集, 并排对比「底座 vs 微调后」, 自动标注崩人设
 python eval_persona.py --compare --adapter /home/fanta/ft_outputs/ev-v1/lora_adapter
 
+# 模型体检: 3 句话 + 渲染后的 prompt + tok/s, 30 秒判定「模型坏 vs 推理后端坏」
+python check_model.py                            # 测 ev-v2
+python check_model.py --base                     # 只测底座
+python check_model.py --no-system                # 排除 system 提示的影响
+
+# OpenAI 兼容服务 (PyTorch + GPU 4bit, 用于 P1 语音助手; 比 CPU 版 llama.cpp 快 5~8 倍)
+python serve_hf.py --adapter /home/fanta/ft_outputs/ev-v2/lora_adapter
+
 # 终端多轮对话 (流式; 会话内 /reset 清空上下文, /remember 记一条, /exit 退出)
 python chat_lora.py
 ADAPTER=/mnt/e/VMOS_workspace/model_tuning/models/Qwen3.5-4B python chat_lora.py  # 跑底座
@@ -141,6 +169,30 @@ python -c "from modelscope import snapshot_download; \
 snapshot_download('unsloth/Qwen3.5-9B-GGUF', local_dir='models/Qwen3.5-9B-GGUF', \
 allow_patterns=['Qwen3.5-9B-UD-Q4_K_XL.gguf','mmproj-F16.gguf'])"   # 只拉指定文件
 ```
+
+### 语音助手 App (P1)
+
+```bash
+# 建独立环境（不碰 ~/venvs/ft），含预下载 whisper 模型 ~3.1GB，走魔搭
+bash setup_app.sh
+
+# 调音色: 生成 8 组候选 + 可点击的试听网页 -> 听完填 app/voice.json
+source ~/venvs/evapp/bin/activate
+python app/try_voices.py
+
+# 起助手（另开终端先起 llama-server）
+bash run_app.sh                                       # 打开 http://localhost:8090
+PORT=8091 LLM_BASE=http://127.0.0.1:8080/v1 bash run_app.sh   # 换端口 / 换模型服务
+
+# 一条命令起「模型服务 + 前端」（推荐，自动等模型就绪）
+bash start_ev.sh                                      # 默认 adapter = ft_outputs/ev-v2
+bash start_ev.sh --adapter ~/ft_outputs/ev-v3/lora_adapter
+bash start_ev.sh --no-llm                             # 只起前端（模型服务已自己起好）
+bash start_ev.sh --stop                               # 全停，释放显存
+```
+
+> P1 是**半双工**（回完才能说下一句），纯对话、无工具调用。
+> 完整架构 / 音色三层方案 / 路线图（P4 是**安卓 App**）见 `docs/P1-语音助手.md`。
 
 ## 6. 显存约束 (8GB) 与调优参数
 

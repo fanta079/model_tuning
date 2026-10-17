@@ -27,6 +27,9 @@ wechat_data/
 .env*
 *.key
 
+# ---- 生成的音频样本 (随时可用 app/try_voices.py 重新生成) ----
+app/voice_samples/
+
 # ---- 工具与 IDE ----
 .idea/
 .vscode/
@@ -37,3 +40,7 @@ Thumbs.db
 .DS_Store
 __pycache__/
 *.pyc
+
+# ---- 运行日志（含模型服务输出，不入库）----
+logs/
+artifacts/

@@ -45,6 +45,9 @@ def main():
     ap.add_argument("--adapter", required=True, help="LoRA adapter 目录")
     ap.add_argument("--out", required=True, help="GGUF 输出目录")
     ap.add_argument("--quants", default="q4_k_m", help="量化方式，逗号分隔，如 q4_k_m,q8_0")
+    ap.add_argument("--merged-only", action="store_true",
+                    help="只把 LoRA 合并成 HF 格式，不转 GGUF —— 不需要 llama.cpp、不需要联网。"
+                         "网络/编译有问题时先用这个，之后再单独转 GGUF。")
     ap.add_argument("--max-seq", type=int, default=2048)
     args = ap.parse_args()
 
@@ -64,6 +67,21 @@ def main():
     )
 
     quants = [q.strip() for q in args.quants.split(",") if q.strip()]
+
+    # ---- 只合并：完全不碰 llama.cpp，也不需要联网 ----
+    if args.merged_only:
+        print(f"\n[合并] LoRA -> HF 完整模型  ->  {out}", flush=True)
+        model.save_pretrained_merged(out, tokenizer, save_method="merged_16bit")
+        print("\n" + "=" * 60)
+        print("合并完成（HF 格式，不是 GGUF）:", out)
+        print("下一步（需要 llama.cpp）:")
+        print(f"  python ~/llama.cpp/convert_hf_to_gguf.py {out} "
+              f"--outfile {out}/ev-f16.gguf --outtype f16")
+        print(f"  ~/llama.cpp/build/bin/llama-quantize {out}/ev-f16.gguf "
+              f"{out}/ev-q4_k_m.gguf Q4_K_M")
+        print("=" * 60)
+        return
+
     for q in quants:
         print(f"\n[导出] 量化方式 = {q}  ->  {out}", flush=True)
         model.save_pretrained_gguf(out, tokenizer, quantization_method=q)

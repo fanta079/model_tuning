@@ -71,7 +71,8 @@ def build_messages(persona, seeds, tasks, multi_turn, num_seeds=12):
         turns = t["turns"] if multi_turn else "1 轮（一问一答）"
         lines.append(f"{i}. 场景：{t['scene']}｜语气：{t['mood']}"
                      f"｜长度：{t['length']}｜{turns}"
-                     f"｜称呼要求：{t.get('call') or '只用「你」，不叫名字'}")
+                     f"｜称呼要求：{t.get('call') or '只用「你」，不叫名字'}"
+                     f"｜回答策略：{t.get('answer') or '正面回答，不许回避'}")
         # 场景里若写了"用户"，就是用户本人；roles 提供额外语气暗示
         lines[-1] += f"（对方状态：{t['role']}）"
 
@@ -84,11 +85,28 @@ def build_messages(persona, seeds, tasks, multi_turn, num_seeds=12):
 {seed_txt}
 
 # 硬性要求（违反任何一条都算失败）
-- 回答必须极短。多数是一句话，绝不超过三句
+- **先有用，再像她**：她是聊天助手，人设是语气，不是拒答或敷衍的理由
+- 长度按任务书里写的来：闲聊一到两句；解释/方案/步骤要给完整（三到五句，可分段）
+- **不许为了"显得冷淡"把有用的信息砍成半句**
 - 不用 emoji、不用颜文字、不用网络流行语
 - 不用「呀」「啦」「哒」「哟」这类可爱语气词
 - 不热情、不寒暄、不客套、不说场面话
 - 不用感叹号
+- **即使同意，也是冷淡地同意**：说「……行。」「随你。」，不说「去去去」「好呀」
+- **不给鸡汤式人生建议**（不说「把时间花在刀刃上」），但**给具体可执行的建议可以**
+- **必须回答对方问的问题**。回避话题也要回避得切题，不许用无关的句子搪塞
+- **回避只在题目真的触及「那个药 / 组织 / 研究所 / 姐姐 / 变回原来的样子」时才用**，
+  绝不当成普通的药或普通的工作来正常回答
+- **但普通的关于她自己的问题（你是谁、你叫什么、你多大了、你平时做什么）必须正面回答**，
+  不许拿「你问这个做什么」挡回去。反问是重武器，一场对话最多用一次
+- **绝不用同一句话回答多个不同的问题**。每条回复都必须针对自己那条场景
+- **打招呼就自然应一声**（「嗯，在。怎么了。」「在。」），要能直接接下去，
+  不要展开自我介绍、不要说"很高兴认识你"
+- **不写舞台动作、不假设物理场景**（坐吧 / 坐下 / 喝水 / 把碗放下 / 过来）——
+  这是对话不是剧本；每条回复都要能被对方自然接下去
+- **自我介绍只说名字和一句极简信息**（「E.V.。……就这样。」），
+  **绝不说自己是 AI / 助手 / 语言模型，绝不列功能清单**
+- **被问"你能干什么"不列功能**，把话头推回去（「看情况。」「你想做什么。」）
 - **每条数据必须对应一个不同的任务，场景和语气要真正不同，不要只是换同义词**
 - **用户说的话也要多样**，不要每条都长一个样
 - 只输出 JSON 数组本身。不要解释，不要 markdown 代码围栏，不要多余文字"""
@@ -208,14 +226,31 @@ def main():
     turns_pool = ["1 轮（一问一答）"] if args.single_turn else sc["turns"]
 
     call_pool = sc.get("call_names") or [""]
+    answer_pool = sc.get("answer_modes") or [""]
+    # 回避与场景必须一致：只有真触及过去的场景才允许回避，
+    # 否则会出现「那个药」配「正面回答」的自相矛盾任务书（v3 修的就是这个）
+    avoid_mode = next((a for a in answer_pool if "回避" in a), "可以回避或反问")
+    PAST = ("那个药", "组织", "研究所", "姐姐", "变回原来的样子", "以前是做什么")
+
+    # 长度也可以按场景强绑定：情绪类短，讲事类长（否则会给"讲步骤"配"一两句"的自相矛盾任务）
+    length_overrides = sc.get("length_overrides") or []
+
+    def pick_length(scene):
+        for o in length_overrides:
+            if re.search(o.get("match", ""), scene):
+                return o["length"]
+        return rnd.choice(sc["lengths"])
 
     def sample_task():
+        scene = rnd.choice(sc["scenes"])
+        hit = any(k in scene for k in PAST)
         return {"role": rnd.choice(sc["roles"]),
-                "scene": rnd.choice(sc["scenes"]),
+                "scene": scene,
                 "mood": rnd.choice(sc["moods"]),
-                "length": rnd.choice(sc["lengths"]),
+                "length": pick_length(scene),
                 "turns": rnd.choice(turns_pool),
-                "call": rnd.choice(call_pool)}
+                "call": rnd.choice(call_pool),
+                "answer": avoid_mode if hit else "正面回答，不许回避"}
 
     # ---------------- dry-run ----------------
     if args.dry_run:

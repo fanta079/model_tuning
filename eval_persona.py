@@ -149,6 +149,8 @@ def main():
     ap.add_argument("--system-file", default="", help="把某个文件（如人设卡）当 system 提示")
     ap.add_argument("--max-new", type=int, default=256)
     ap.add_argument("--compare", action="store_true", help="同时跑底座，做微调前后对比")
+    ap.add_argument("--against", default="", help="再跑一个 adapter 做对比（如上一版 v1），"
+                                                  "用来判断「v2 是不是真的比 v1 好」")
     ap.add_argument("--base-only", action="store_true", help="只跑底座")
     ap.add_argument("--tag", default="", help="报告文件名后缀，默认 adapter 目录名")
     ap.add_argument("--limit", type=int, default=0, help="只跑前 N 题（调试用）")
@@ -163,7 +165,21 @@ def main():
         questions = questions[:args.limit]
     print(f"[题集] {len(questions)} 题")
 
+    def tag_of(path):
+        p = path.rstrip("/")
+        return os.path.basename(os.path.dirname(p)) or os.path.basename(p)
+
     results = {}
+
+    if args.against:
+        if not os.path.isdir(args.against):
+            sys.exit(f"[错误] 找不到对比 adapter: {args.against}")
+        print(f"[加载对比 adapter] {args.against}")
+        m, t, e, p = load(args.against)
+        results[f"对比（{tag_of(args.against)}）"] = run(
+            m, t, e, p, questions, system, args.max_new, tag_of(args.against))
+        del m
+        torch.cuda.empty_cache()
 
     if args.compare or args.base_only:
         print(f"[加载底座] {args.base_model}")
@@ -177,7 +193,8 @@ def main():
             sys.exit("[错误] 需要 --adapter，或用 --base-only 只跑底座")
         print(f"[加载 adapter] {args.adapter}")
         m, t, e, p = load(args.adapter)
-        results["微调后（+LoRA）"] = run(m, t, e, p, questions, system, args.max_new, "lora")
+        results[f"微调后（{tag_of(args.adapter)}）"] = run(
+            m, t, e, p, questions, system, args.max_new, tag_of(args.adapter))
         del m
         torch.cuda.empty_cache()
 

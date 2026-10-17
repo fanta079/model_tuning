@@ -1,0 +1,14 @@
+{
+  "_说明": "E.V. 的音色配置。改完重启 server.py 生效（也可用同名环境变量临时覆盖，如 TTS_PITCH=-20Hz）。",
+  "_当前选择": "试听候选第 3 组「Xiaoxiao 冷」—— 推荐起点。听完 app/voice_samples/index.html 后按喜好微调。",
+  "_旋钮含义": {
+    "voice": "音色底子（换一个就是换一个人）",
+    "rate": "语速，负值更慢 → 显得不在乎",
+    "pitch": "音调，负值更低 → 显得冷",
+    "volume": "音量，一般不用动"
+  },
+  "voice": "zh-CN-XiaoxiaoNeural",
+  "rate": "-15%",
+  "pitch": "-15Hz",
+  "volume": "+0%"
+}

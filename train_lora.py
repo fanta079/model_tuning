@@ -138,7 +138,7 @@ trainer = SFTTrainer(
         seed                        = 42,
     ),
 )
-# 只对 assistant 回复计算 loss（客服场景推荐：不让模型去学"用户说的话"）
+# 只对 assistant 回复计算 loss（人设/风格微调推荐：不让模型去学"用户说的话"）
 if RESPONSES_ONLY:
     from unsloth.chat_templates import train_on_responses_only
     trainer = train_on_responses_only(
@@ -146,7 +146,7 @@ if RESPONSES_ONLY:
         instruction_part = "<|im_start|>user\n",
         response_part    = "<|im_start|>assistant\n",
     )
-    print("[训练] 已开启 train_on_responses_only（只对客服回复算 loss）")
+    print("[训练] 已开启 train_on_responses_only（只对 assistant 回复算 loss）")
 
 trainer.train()
 

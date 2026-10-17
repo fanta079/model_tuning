@@ -1,0 +1,15 @@
+{
+  "_说明": "自我介绍专项探针（v3 用）。原来那 25 题没有覆盖这一类，所以 v2 评测 0 违规、实际一问就崩。改这个文件不会影响 haibara_eval.json 的历史可比性。",
+  "_用法": "python eval_persona.py --eval-set personas/probe_intro.json --against <v2> --adapter <v3>",
+
+  "questions": [
+    "你好",
+    "hi",
+    "在吗",
+    "你是谁？",
+    "介绍一下你自己",
+    "你能帮我做什么",
+    "你是不是 AI",
+    "很高兴认识你"
+  ]
+}
