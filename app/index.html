@@ -262,13 +262,20 @@
   }
 
   /* 对话流：球下方居中窄栏。有它才像「有记忆」，不占侧栏才不像「后台系统」 */
+  /* 三个约束缺一不可：
+       min-height  保底一行，否则窗口偏矮时里面 flex:1 的 #log 会被压成 0，
+                   表现为"只剩一条横线、消息全没了"
+       max-height  上限，消息多了在里面滚动，别把球挤没
+       height:auto 内容少的时候不占一大块空地
+     上一版只写了 max-height，就踩了第一条。 */
   #logWrap{
-    flex:none;width:min(720px,94%);max-height:min(30vh,232px);
-    display:flex;flex-direction:column;min-height:0;position:relative;z-index:2;
+    flex:none;width:min(720px,94%);
+    height:auto;min-height:76px;max-height:min(30vh,232px);
+    display:flex;flex-direction:column;position:relative;z-index:2;
     overflow:hidden;transition:max-height .28s cubic-bezier(.2,.7,.3,1),opacity .2s;
   }
   #logWrap .sec{margin-bottom:7px}
-  body.nolog #logWrap{max-height:0;opacity:0;overflow:hidden;pointer-events:none}
+  body.nolog #logWrap{height:0;min-height:0;max-height:0;opacity:0;overflow:hidden;pointer-events:none}
   #log{
     flex:1;min-height:0;overflow-y:auto;padding:0 4px 4px 2px;
     display:flex;flex-direction:column;gap:8px;
@@ -315,14 +322,20 @@
   #dock{display:flex;align-items:center;gap:10px;position:relative;min-height:38px}
 
   /* 说话：主 CTA。胶囊 + 一圈状态光环，按下时有内收感 */
-  /* 说话按钮：曾经做到 46px 高、132px 宽。但球本身才是主入口，按钮大一号只是在
-     底栏里抢位置 —— 现在它和旁边几个同高同档，靠颜色而不是体型区分主次 */
+  /* 四个文字按钮（说话 / 电话 / 打字 / 清空）尺寸完全一致。
+     宽度写死，不靠 padding 撑 —— 内边距撑出来的宽度会随字号、字距、字形变化，
+     一改字体就又不齐了；写死之后只有文字本身在变。
+     padding-left 补偿 letter-spacing 在末字后面留下的那点空，否则文字看着偏左。 */
+  #mic,#phone,#typeToggle,#reset{
+    height:36px;width:88px;flex:none;padding:0 0 0 .18em;
+    border-radius:18px;cursor:pointer;transition:.16s;
+    font:600 12px/1 var(--sans);letter-spacing:.18em;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
   #mic{
-    height:36px;min-width:80px;padding:0 16px;position:relative;
     background:rgba(95,216,255,.07);
-    border:1px solid rgba(95,216,255,.40);border-radius:18px;
-    color:#cdeeff;font:600 12.5px/1 var(--sans);letter-spacing:.22em;
-    cursor:pointer;transition:.16s;
+    border:1px solid rgba(95,216,255,.40);
+    color:#cdeeff;
     box-shadow:0 0 18px rgba(95,216,255,.10),inset 0 0 14px rgba(95,216,255,.05);
   }
   #mic:hover:not(:disabled){
@@ -347,15 +360,16 @@
     box-shadow:0 0 22px rgba(79,224,176,.22);
   }
 
-  /* 次级控件：细边胶囊，字距收紧一档避免与主按钮打架 */
-  #phone,#typeToggle,#reset,#toolsBtn{
-    height:36px;flex:none;
-    background:transparent;border:1px solid var(--line2);border-radius:18px;
-    color:var(--dim);font:10.5px/1 var(--mono);letter-spacing:.14em;
-    text-transform:uppercase;cursor:pointer;transition:.15s;
+  /* 次级控件：细边胶囊。几何尺寸由上面那条统一规则给，这里只管颜色 */
+  #phone,#typeToggle,#reset{
+    background:transparent;border:1px solid var(--line2);color:var(--dim);
   }
-  #phone,#typeToggle,#reset{padding:0 14px}
-  #toolsBtn{width:36px;padding:0;font-size:13px;letter-spacing:0}
+  #toolsBtn{
+    height:36px;width:36px;flex:none;padding:0;
+    background:transparent;border:1px solid var(--line2);border-radius:18px;
+    color:var(--dim);font:13px/1 var(--mono);letter-spacing:0;
+    cursor:pointer;transition:.15s;
+  }
   #phone:hover,#typeToggle:hover,#reset:hover,#toolsBtn:hover{
     border-color:rgba(95,216,255,.52);color:var(--ink-hi);background:rgba(95,216,255,.05);
   }
@@ -444,7 +458,7 @@
     .hud,.gauge{display:none}
     #orb{height:min(58vh,82vw,420px)}
     #waveWrap{width:92%}
-    #logWrap{max-height:26vh}
+    #logWrap{max-height:min(26vh,190px)}
     #hint{font-size:11.5px}
   }
   @media (max-width: 520px){
@@ -458,10 +472,11 @@
     footer{padding:4px 12px 12px;gap:6px}
     #hint{white-space:normal;font-size:11px;line-height:1.5;text-align:center}
     #dock{gap:6px}
-    #mic{min-width:84px;padding:0 14px;height:36px;font-size:11.5px;letter-spacing:.14em}
-    #phone,#typeToggle,#reset{padding:0 9px;font-size:9.5px;letter-spacing:.04em;height:34px}
+    #mic,#phone,#typeToggle,#reset{
+      width:74px;height:34px;font-size:10.5px;letter-spacing:.10em;padding:0 0 0 .10em;
+    }
     #toolsBtn{width:34px;height:34px}
-    #logWrap{max-height:24vh}
+    #logWrap{max-height:min(24vh,170px)}
     .bub{font-size:12.5px}
   }
   @media (prefers-reduced-motion: reduce){
@@ -1898,8 +1913,11 @@ fillDevices();
 requestAnimationFrame(loop);
 checkHealth();
 setInterval(() => { if (state === 'idle') checkHealth(); }, 8000);
-// 宽屏：对话记录常显（JARVIS 那种右侧终端）；窄屏：默认收起，点「记录」才弹出
-setLogOpen(window.innerWidth > 900);
+// 对话记录默认展开。
+// 旧逻辑是「宽屏常显、窄屏收起」—— 那时记录是右侧浮层，手机上会盖住球。
+// 现在它是球下面的一条内联区域，手机上藏掉就等于看不见她说什么。
+// 想清空视野自己点「记录」收起来即可。
+setLogOpen(true);
 window.addEventListener('resize', () => { /* 尺寸在 draw 里自适应 */ paintTelemetry(); });
 </script>
 
