@@ -990,7 +990,7 @@ function setState(s) {
   }
 }
 
-function addRow(who, text, cls, live) {
+function addRow(who, text, cls, live, before) {
   const row = document.createElement('div');
   row.className = 'row ' + cls;
   if (who) {
@@ -1002,7 +1002,10 @@ function addRow(who, text, cls, live) {
   b.className = 'bub' + (live ? ' live' : '');    // live = 正在流式输出（尾巴有光标）
   b.textContent = text;
   row.appendChild(b);
-  logEl.appendChild(row);
+  // before：插到某一行前面。assistant 气泡是先建好的（流式要用），
+  // 用户那行后到，必须插到它前面，否则对话顺序会变成「答在上、问在下」。
+  if (before && before.parentNode === logEl) logEl.insertBefore(row, before);
+  else logEl.appendChild(row);
   logEl.scrollTop = logEl.scrollHeight;
   // 记录隐藏时，非系统消息计入未读角标
   if (!logOpen && cls !== 'sys') {
@@ -1344,7 +1347,8 @@ async function streamTurn(url, body, hintText) {
 
 function onEvent(t, ev, bubble) {
   if (ev.t === 'meta') {
-    if (ev.user_text) addRow('你', ev.user_text, 'me');
+    // 插到 E.V. 那行前面：问句必须在答句上方（自上而下）
+    if (ev.user_text) addRow('你', ev.user_text, 'me', false, bubble.parentElement);
     setHint('在想……');
   } else if (ev.t === 'delta') {
     t.reply += ev.d;
