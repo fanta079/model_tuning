@@ -57,7 +57,7 @@ _state = {"model": None, "prompt": None, "sr": 24000, "ref_seconds": 0.0,
           "ref_text": "", "model_id": ""}
 _lock = threading.Lock()          # torch 推理不保证并发安全，串行化请求
 TRIM = os.environ.get("TTS_TRIM", "1") != "0"      # 剪首尾静音（默认开）
-GAP  = os.environ.get("TTS_GAP", "0") != "0"       # 压句中长停顿（默认关，见 _compress_gaps）
+GAP  = os.environ.get("TTS_GAP", "1") != "0"       # 压句中长停顿（默认开；TTS_GAP=0 关掉）
 
 
 def _resolve_model(arg: str) -> str:
@@ -158,7 +158,7 @@ def _trim_silence(audio, sr, head_ms=40, tail_ms=60, thr_ratio=0.08):
     return a[start:end]
 
 
-def _compress_gaps(audio, sr, min_ms=600, target_ms=320, thr_ratio=0.08):
+def _compress_gaps(audio, sr, min_ms=600, target_ms=400, thr_ratio=0.08):
     """压缩句中长停顿：>=min_ms 的静音压到 target_ms，短的保持原样。
 
     为什么需要：克隆会继承参考音频的停顿长度。实测「嗯，在。有事就说。」里有两个
@@ -211,7 +211,7 @@ def synthesize(text: str, language: str = "Chinese"):
     raw_audio = wavs[0]
     audio = _trim_silence(raw_audio, sr) if TRIM else raw_audio
     if GAP:
-        audio = _compress_gaps(audio, sr)
+        audio = _compress_gaps(audio, sr, target_ms=400)
     buf = io.BytesIO()
     sf.write(buf, audio, sr, format="WAV", subtype="PCM_16")
     data = buf.getvalue()
