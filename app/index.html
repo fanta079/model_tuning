@@ -65,9 +65,10 @@
   .cut-sm{clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
 
   /* 9px 等宽大写标签：HUD 里所有「说明文字」都是这个规格 */
-  .k{font:9px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--dim2)}
+  /* 字号从 9 提到 10、字距收窄 —— 9px + .24em 在 Windows 上基本糊成一团 */
+  .k{font:10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim2)}
   .sec{
-    font:9px/1 var(--mono);letter-spacing:.28em;text-transform:uppercase;color:var(--dim2);
+    font:10px/1.2 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim);
     display:flex;align-items:center;gap:8px;margin:0 0 8px;
   }
   .sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent)}
@@ -88,7 +89,7 @@
     display:flex;align-items:baseline;
   }
   header h1 small{
-    font:9px/1 var(--mono);letter-spacing:.22em;color:var(--dim2);margin-left:11px;
+    font:10px/1 var(--mono);letter-spacing:.14em;color:var(--dim2);margin-left:11px;
     text-transform:uppercase;font-weight:400;
   }
   /* 状态灯：呼吸只走透明度和一点点尺寸，不做位移 —— 位移是廉价感的来源 */
@@ -103,11 +104,11 @@
   #dot.speak{background:var(--grn);animation:breathe 1.4s ease-in-out infinite}
   @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
   #stateLbl{
-    font:9px/1 var(--mono);letter-spacing:.26em;text-transform:uppercase;
-    color:var(--ink);min-width:64px;
+    font:11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink);min-width:72px;
   }
   #health{
-    margin-left:auto;font:9px/1.5 var(--mono);letter-spacing:.14em;color:var(--dim2);
+    margin-left:auto;font:10.5px/1.55 var(--mono);letter-spacing:.03em;color:var(--dim);
     text-align:right;text-transform:uppercase;white-space:nowrap;
   }
   #health .bad{color:var(--red)}
@@ -115,7 +116,7 @@
   #logToggle{
     height:24px;padding:0 10px;flex:none;
     background:transparent;border:1px solid var(--line2);color:var(--dim);
-    font:9px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;cursor:pointer;
+    font:10.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
     display:inline-flex;align-items:center;gap:6px;transition:.15s;
   }
   #logToggle:hover{border-color:rgba(127,227,255,.55);color:var(--ink-hi)}
@@ -127,7 +128,7 @@
   }
   #unread.on{display:inline-block}
   #buildStamp{
-    font:9px/1 var(--mono);letter-spacing:.12em;color:rgba(198,215,226,.16);
+    font:9.5px/1 var(--mono);letter-spacing:.06em;color:rgba(206,224,236,.34);
     cursor:pointer;user-select:none;white-space:nowrap;
   }
   #buildStamp:hover{color:var(--dim)}
@@ -144,7 +145,7 @@
   }
   .ro:last-child{border-bottom:none}
   .ro .v{
-    font:11px/1 var(--mono);letter-spacing:.05em;color:var(--ink);
+    font:11.5px/1 var(--mono);letter-spacing:.04em;color:var(--ink);
     font-variant-numeric:tabular-nums;text-align:right;
     max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
@@ -182,7 +183,7 @@
   }
   #orb:focus-visible{outline:1px solid rgba(127,227,255,.5);outline-offset:8px}
   #recTimer{
-    height:16px;font:10px/1 var(--mono);letter-spacing:.2em;color:var(--red);
+    height:18px;font:11.5px/1 var(--mono);letter-spacing:.10em;color:var(--red);
     text-transform:uppercase;opacity:0;transition:opacity .2s;
   }
   #recTimer.on{opacity:1}
@@ -193,7 +194,7 @@
   #meter.on{opacity:1}
   #meterFill{height:100%;width:0;background:var(--red);transition:width .06s linear}
   #devInfo{
-    height:14px;font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);
+    height:16px;font:10px/1 var(--mono);letter-spacing:.10em;color:var(--dim);
     text-transform:uppercase;opacity:0;transition:opacity .2s;
     max-width:92%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
@@ -226,20 +227,23 @@
   .row.me{border-left-color:rgba(127,227,255,.34)}
   .row.ev{border-left-color:rgba(94,224,168,.28)}
   .who{
-    font:9px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;
-    color:var(--dim2);margin-bottom:4px;
+    font:10px/1 var(--mono);letter-spacing:.10em;text-transform:uppercase;
+    color:var(--dim);margin-bottom:5px;
   }
-  .row.me .who{color:rgba(127,227,255,.55)}
-  .row.ev .who{color:rgba(94,224,168,.55)}
+  .row.me .who{color:rgba(140,232,255,.78)}
+  .row.ev .who{color:rgba(120,236,190,.78)}
   .bub{
     white-space:pre-wrap;word-break:break-word;
-    font-size:12.5px;line-height:1.66;color:#c9dae6;
+    font-size:13.5px;line-height:1.72;color:#dbe9f2;
   }
-  .row.me .bub{color:#9dbfd0}
+  .row.me .bub{color:#b9d3e2}
   .bub.live::after{content:"▍";margin-left:1px;color:var(--cy);animation:blink .9s steps(1) infinite}
+  /* 被用户打断的半句话：淡一点 + 标出来，别让它看起来像说完了 */
+  .bub.cut{opacity:.6}
+  .bub.cut::after{content:" ⌁ 打断";font:9px/1 var(--mono);letter-spacing:.16em;color:var(--amber)}
   @keyframes blink{50%{opacity:0}}
-  .row.sys{border-left-color:rgba(152,203,229,.10)}
-  .row.sys .bub{font:10px/1.5 var(--mono);letter-spacing:.06em;color:var(--dim2)}
+  .row.sys{border-left-color:rgba(152,203,229,.14)}
+  .row.sys .bub{font:12px/1.6 var(--mono);letter-spacing:.02em;color:var(--dim)}
 
   /* ---------- 底栏 ---------- */
   footer{
@@ -254,14 +258,15 @@
     opacity:.5;
   }
   #hint{
-    font:9.5px/1.4 var(--mono);letter-spacing:.14em;color:var(--dim);
-    text-transform:uppercase;text-align:center;min-height:14px;
+    /* 这行是唯一告诉你"现在该干什么"的文字，之前 9.5px + 大字距 + .44 透明度基本读不清 */
+    font:12.5px/1.5 var(--sans);letter-spacing:0;color:var(--dim);
+    text-align:center;min-height:19px;
   }
   .controls{display:flex;align-items:center;gap:8px;width:100%;max-width:720px;margin:0 auto}
   #mic{
     flex:none;height:34px;min-width:112px;padding:0 16px;
     background:rgba(127,227,255,.055);border:1px solid rgba(127,227,255,.32);
-    color:#bfe9f8;font:10px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;
+    color:#bfe9f8;font:12px/1 var(--mono);letter-spacing:.10em;text-transform:uppercase;
     cursor:pointer;transition:.15s;
   }
   #mic:hover:not(:disabled){background:rgba(127,227,255,.14);border-color:rgba(127,227,255,.66);color:#fff}
@@ -272,7 +277,7 @@
   #phone{
     flex:none;height:34px;padding:0 13px;
     background:transparent;border:1px solid var(--line2);color:var(--dim);
-    font:10px/1 var(--mono);letter-spacing:.20em;text-transform:uppercase;
+    font:11.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
     cursor:pointer;transition:.15s;
   }
   #phone:hover{border-color:rgba(127,227,255,.5);color:var(--ink-hi)}
@@ -280,31 +285,31 @@
   #typeIn{
     flex:1;min-width:0;height:34px;padding:0 11px;
     background:rgba(8,14,19,.85);border:1px solid var(--line2);
-    color:var(--ink);font:12.5px/1 var(--sans);outline:none;transition:.15s;
+    color:var(--ink);font:13.5px/1 var(--sans);outline:none;transition:.15s;
   }
-  #typeIn::placeholder{color:rgba(198,215,226,.26)}
+  #typeIn::placeholder{color:rgba(206,224,236,.44)}
   #typeIn:focus{border-color:rgba(127,227,255,.55);box-shadow:0 0 0 1px rgba(127,227,255,.12)}
   #reset{
     flex:none;height:34px;padding:0 10px;background:none;border:none;
-    color:var(--dim2);font:9.5px/1 var(--mono);letter-spacing:.2em;
+    color:var(--dim);font:11px/1 var(--mono);letter-spacing:.10em;
     text-transform:uppercase;cursor:pointer;transition:.15s;
   }
   #reset:hover{color:var(--ink-hi)}
   .devRow{display:none;width:100%;max-width:720px;margin:0 auto;justify-content:flex-end;gap:6px}
   .devRow.on{display:flex}
   #dev{
-    background:rgba(8,14,19,.9);color:var(--dim);border:1px solid var(--line2);
-    font:10px/1 var(--mono);letter-spacing:.06em;padding:4px 6px;max-width:270px;outline:none;
+    background:rgba(8,14,19,.9);color:var(--ink);border:1px solid var(--line2);
+    font:11.5px/1.4 var(--mono);letter-spacing:.02em;padding:4px 6px;max-width:270px;outline:none;
   }
   #devRefresh{
-    background:none;border:1px solid var(--line2);color:var(--dim2);
-    font:9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+    background:none;border:1px solid var(--line2);color:var(--dim);
+    font:10.5px/1 var(--mono);letter-spacing:.10em;text-transform:uppercase;
     padding:4px 8px;cursor:pointer;
   }
   #devRefresh:hover{border-color:rgba(127,227,255,.45);color:var(--ink)}
   #diag{
     display:none;position:absolute;left:14px;right:14px;bottom:100%;margin-bottom:6px;
-    font:10px/1.55 var(--mono);color:rgba(198,215,226,.62);
+    font:11.5px/1.6 var(--mono);color:rgba(206,224,236,.82);
     background:rgba(4,8,11,.97);border:1px solid var(--line2);
     padding:9px 11px;white-space:pre-wrap;word-break:break-all;max-height:38vh;overflow:auto;
     z-index:30;
@@ -1458,6 +1463,7 @@ async function streamTurn(url, body, hintText) {
   setState('thinking');
   setHint(hintText || '思考中……');
   const bubble = addRow('E.V.', '', 'ev', true);
+  t.bubble = bubble;          // 记在本轮上：被打断时要能把它收拾干净
 
   try {
     const isForm = (typeof FormData !== 'undefined') && (body instanceof FormData);
@@ -1567,6 +1573,12 @@ function sendText(text) {
 function abortTurn() {
   if (activeCtrl) { try { activeCtrl.abort(); } catch (e) {} activeCtrl = null; }
   stopPlayback();
+  // 收尾被打断那一轮的行：一个字都没说出来就删掉，说了半句就留着标「被打断」
+  const b = turn && turn.bubble;
+  if (b && b.parentElement) {
+    if (!b.textContent.trim()) b.parentElement.remove();
+    else { b.classList.remove('live'); b.classList.add('cut'); }
+  }
   turn = null;
   streamToken += 1;
 }
