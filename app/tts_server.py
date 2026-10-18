@@ -56,7 +56,8 @@ LOCAL_NAME = "Qwen3-TTS-12Hz-0.6B-Base"
 _state = {"model": None, "prompt": None, "sr": 24000, "ref_seconds": 0.0,
           "ref_text": "", "model_id": ""}
 _lock = threading.Lock()          # torch 推理不保证并发安全，串行化请求
-TRIM = os.environ.get("TTS_TRIM", "1") != "0"   # 剪掉首尾静音（默认开，见 _trim_silence）
+TRIM = os.environ.get("TTS_TRIM", "1") != "0"      # 剪首尾静音（默认开）
+GAP  = os.environ.get("TTS_GAP", "0") != "0"       # 压句中长停顿（默认关，见 _compress_gaps）
 
 
 def _resolve_model(arg: str) -> str:
@@ -157,6 +158,44 @@ def _trim_silence(audio, sr, head_ms=40, tail_ms=60, thr_ratio=0.08):
     return a[start:end]
 
 
+def _compress_gaps(audio, sr, min_ms=600, target_ms=320, thr_ratio=0.08):
+    """压缩句中长停顿：>=min_ms 的静音压到 target_ms，短的保持原样。
+
+    为什么需要：克隆会继承参考音频的停顿长度。实测「嗯，在。有事就说。」里有两个
+    840ms 停顿，8 个字占了 2.66 秒 —— 单句像"冷淡地顿一下"，但一段回答有三四句时，
+    这些停顿会累积成好几秒死气，听起来像卡住。压到 320ms 仍然保留语气，只是不拖。
+    """
+    import numpy as np
+
+    a = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if a.size == 0:
+        return a
+    fl = max(1, int(sr * 0.01))
+    nf = a.size // fl
+    if nf < 3:
+        return a
+    env = np.sqrt((a[:nf * fl].reshape(nf, fl) ** 2).mean(axis=1))
+    quiet = env <= float(env.max()) * thr_ratio
+    tgt = int(sr * target_ms / 1000)
+    hard = int(sr * min_ms / 1000)
+
+    out, i = [], 0
+    while i < nf:
+        j = i
+        if quiet[i]:
+            while j < nf and quiet[j]:
+                j += 1
+            run = (j - i) * fl
+            out.append(a[i * fl: i * fl + (tgt if run >= hard else run)])
+        else:
+            while j < nf and not quiet[j]:
+                j += 1
+            out.append(a[i * fl: j * fl])
+        i = j
+    out.append(a[nf * fl:])                      # 不足一帧的尾巴
+    return np.concatenate(out)
+
+
 def synthesize(text: str, language: str = "Chinese"):
     """返回 (wav_bytes, sample_rate)。失败抛异常。"""
     import soundfile as sf
@@ -171,6 +210,8 @@ def synthesize(text: str, language: str = "Chinese"):
         dt = time.time() - t0
     raw_audio = wavs[0]
     audio = _trim_silence(raw_audio, sr) if TRIM else raw_audio
+    if GAP:
+        audio = _compress_gaps(audio, sr)
     buf = io.BytesIO()
     sf.write(buf, audio, sr, format="WAV", subtype="PCM_16")
     data = buf.getvalue()
@@ -247,11 +288,15 @@ def main():
     ap.add_argument("--check", action="store_true", help="合成一句自检后退出")
     ap.add_argument("--no-trim", action="store_true",
                     help="不剪首尾静音（默认剪；模型短句会在前面吐 ~1.2s 空白）")
+    ap.add_argument("--compress-gaps", action="store_true",
+                    help="压句中 >=600ms 的长停顿到 320ms（默认关）")
     args = ap.parse_args()
 
-    global TRIM
+    global TRIM, GAP
     if args.no_trim:
         TRIM = False
+    if args.compress_gaps:
+        GAP = True
 
     ref_audio, ref_text, _cfg = _read_voice_cfg()
     if args.ref:
