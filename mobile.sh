@@ -99,17 +99,31 @@ fi
 cat <<EOF
 [没有可用的 https 工具]
 
-  A. cloudflared（推荐，30 秒装好，免注册）
-       wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-       sudo dpkg -i cloudflared-linux-amd64.deb
+  A. cloudflared（30 秒装好，免注册）
+       # GitHub 直连在国内基本卡死；走镜像，并且别用 -q（否则卡住时你什么都看不见）
+       cd ~ && wget -c -O cloudflared.deb \
+         "https://ghproxy.net/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
+       sudo dpkg -i ~/cloudflared.deb && cloudflared --version
        bash mobile.sh
+       # 镜像不好使就换: gh-proxy.com / ghfast.top（把域名替换掉即可）
 
-  B. tailscale（长期用更稳，设备间直连）
+  B. tailscale（长期用更稳，设备间直连，还顺手绕过 WSL 的 NAT）
        curl -fsSL https://tailscale.com/install.sh | sh
-       sudo tailscale up        # 手机也装 App 登录同一账号
-       bash mobile.sh
+       sudo tailscale set --operator=\$USER     # 一次，之后 serve 不用 sudo
+       sudo tailscale up                       # 打印链接，浏览器授权
+       tailscale serve --bg 8090
 
-  C. 只想先看看界面长什么样（没有麦克风）
+       手机装 App（国内 Play / 应用商店常提示「地区不支持」）：
+         · 官方 APK: https://pkgs.tailscale.com/stable/#android  （universal APK，国内可达）
+         · 或 F-Droid: https://f-droid.org/packages/com.tailscale.ipn/
+       装完登录同一账号，注意开关要打开（通知栏要有 VPN 图标）。
+
+  C. 不想装 App？家里 WiFi 用就够的话，自签证书更省事：
+       LAN_IP=192.168.3.205 bash make_tls_cert.sh
+       TLS_CERT=certs/server.crt TLS_KEY=certs/server.key bash start_ev.sh --tts
+       手机只需把 certs/ca.crt 装成「受信任的 CA」（不装任何 App）
+
+  D. 只想先看看界面长什么样（没有麦克风）
        http://$LAN_IP:$PORT
      手机和 PC 要连同一个 WiFi；Windows 防火墙可能拦，放行 $PORT 即可。
 
