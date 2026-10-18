@@ -42,10 +42,12 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import torch
+from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
 from unsloth import FastLanguageModel
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -121,6 +123,64 @@ def generate(messages, max_new, temperature, top_p):
     return txt.strip()
 
 
+class _StopOnEvent(StoppingCriteria):
+    """客户端断开了（打断/关页面）就让 generate 尽快停，别继续烧 GPU。"""
+
+    def __init__(self, ev: threading.Event):
+        self.ev = ev
+
+    def __call__(self, input_ids, scores, **kwargs):    # noqa: ARG002
+        return self.ev.is_set()
+
+
+def generate_stream(messages, max_new, temperature, top_p, stop_ev=None):
+    """边生成边吐文本。用 TextIteratorStreamer + 后台线程实现。
+
+    为什么要自己攒 acc：Qwen 的分词是字节级 BPE，单个 token 解码出来
+    可能是半个汉字（`\\ufffd`），直接发出去前端就会闪一下乱码。
+    """
+    prompt = render(messages)
+    ids = _tok(prompt, return_tensors="pt").to(_model.device)
+    streamer = TextIteratorStreamer(_tok, skip_prompt=True, skip_special_tokens=True)
+    kw = dict(
+        max_new_tokens=max_new, do_sample=temperature > 0,
+        temperature=max(temperature, 0.01), top_p=top_p,
+        eos_token_id=_eos or None, pad_token_id=_pad, streamer=streamer)
+    if stop_ev is not None:
+        kw["stopping_criteria"] = StoppingCriteriaList([_StopOnEvent(stop_ev)])
+
+    err = {}
+
+    def work():
+        try:
+            with torch.inference_mode():
+                _model.generate(**ids, **kw)
+        except Exception as e:                          # noqa: BLE001
+            err["e"] = e
+        finally:
+            try:
+                streamer.end()
+            except Exception:                           # noqa: BLE001
+                pass
+
+    th = threading.Thread(target=work, daemon=True)
+    th.start()
+
+    acc = ""
+    for chunk in streamer:
+        acc += chunk
+        if "\ufffd" in chunk:            # 半个汉字，等下一块补齐
+            continue
+        if acc:
+            yield acc
+            acc = ""
+    if acc:
+        yield acc
+    th.join(timeout=1.0)
+    if "e" in err:
+        raise err["e"]
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -134,6 +194,53 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    # ---------------- SSE / chunked ----------------
+    def _chunk(self, data: bytes):
+        """手写 chunked 分块。BaseHTTPRequestHandler 不会自动加，必须自己来。"""
+        self.wfile.write(b"%X\r\n" % len(data) + data + b"\r\n")
+        self.wfile.flush()
+
+    def _sse_headers(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")     # 有反代时别缓冲
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+    def _sse(self, obj):
+        payload = json.dumps(obj, ensure_ascii=False)
+        self._chunk(("data: " + payload + "\n\n").encode())
+
+    def _stream(self, msgs, max_new, temperature, top_p):
+        stop_ev = threading.Event()
+        t0 = time.time()
+        n_char = 0
+        self._sse_headers()
+        try:
+            for text in generate_stream(msgs, max_new, temperature, top_p, stop_ev):
+                if not text:
+                    continue
+                n_char += len(text)
+                self._sse({"choices": [{"index": 0, "delta": {"content": text}}]})
+        except Exception as e:                          # noqa: BLE001
+            stop_ev.set()
+            try:
+                self._sse({"error": {"message": f"{type(e).__name__}: {e}"}})
+            except OSError:
+                pass
+        finally:
+            stop_ev.set()
+            try:
+                self._chunk(b"data: [DONE]\n\n")
+                self._chunk(b"")
+            except OSError:                             # 客户端已断开
+                pass
+            dt = time.time() - t0
+            if dt > 0:
+                print(f"[生成-流式] {n_char} 字 / {dt:.1f}s = {n_char / dt:.1f} 字/s",
+                      flush=True)
 
     def do_GET(self):
         if self.path.rstrip("/").endswith("/models"):
@@ -157,10 +264,16 @@ class Handler(BaseHTTPRequestHandler):
         if not any(m.get("role") == "system" for m in msgs):
             msgs = [{"role": "system", "content": SYSTEM}] + msgs
         max_new = min(int(req.get("max_tokens") or _max_new), 512)
+        temperature = float(req.get("temperature", 0.7))
+        top_p = float(req.get("top_p", 0.9))
+
+        # 流式：OpenAI 的 stream=true，返回 SSE，边生成边吐 token
+        if req.get("stream"):
+            self._stream(msgs, max_new, temperature, top_p)
+            return
+
         try:
-            text = generate(msgs, max_new,
-                            float(req.get("temperature", 0.7)),
-                            float(req.get("top_p", 0.9)))
+            text = generate(msgs, max_new, temperature, top_p)
         except Exception as e:                          # noqa: BLE001
             self._json(500, {"error": {"message": f"{type(e).__name__}: {e}"}})
             return

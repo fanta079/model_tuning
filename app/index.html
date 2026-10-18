@@ -136,6 +136,12 @@
   }
   .row.me .bub{background:rgba(90,209,230,.10);border:1px solid rgba(90,209,230,.22)}
   .row.ev .bub{background:rgba(29,95,112,.30);border:1px solid rgba(90,209,230,.30);color:#e7f8ff}
+  /* 流式输出时气泡尾巴上闪一个光标，表示"还在说" */
+  .bub.live::after{
+    content:"▍";margin-left:1px;color:var(--accent);
+    animation:blink .9s steps(1) infinite;
+  }
+  @keyframes blink{50%{opacity:0}}
   .row.sys{align-self:center;max-width:100%}
   .row.sys .bub{
     background:none;color:#5f7e8f;font-size:11.5px;padding:2px 0;
@@ -322,7 +328,6 @@ let speechFrom = 0;
 let silenceFrom = 0;
 let bargeFrom = 0;
 let micAnalyser = null;
-let playAnalyser = null;
 let curAudio = null;
 
 const hasMic = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
@@ -382,22 +387,6 @@ function attachMic(stream) {
   }
 }
 
-// 播放音频接分析器（同时要连到扬声器）
-let playSrc = null;
-function attachPlayback(audioEl) {
-  const ctx = ensureCtx();
-  const an = makeAnalyser();
-  if (!ctx || !an) return null;
-  try {
-    playSrc = ctx.createMediaElementSource(audioEl);
-    playSrc.connect(an);
-    an.connect(ctx.destination);
-    analyser = an;
-    playAnalyser = an;
-    return playSrc;
-  } catch (e) { analyser = micAnalyser; playAnalyser = null; return null; }
-}
-
 // 只拆麦克风侧（电话模式会一直持有它）
 function detachMic() {
   try { if (micSrc) micSrc.disconnect(); } catch (e) {}
@@ -407,17 +396,86 @@ function detachMic() {
   if (analyser !== playAnalyser) analyser = playAnalyser;
 }
 
-// 只拆播放侧（说完一轮就拆，麦克风继续留着）
-function detachPlay() {
-  try { if (playSrc) playSrc.disconnect(); } catch (e) {}
-  playSrc = null;
+// ==================== 流式播放器 ====================
+// 为什么不用 <audio> 元素播：TTS 现在是"一句一段"地回来的，每段一个独立 mp3。
+// 用 <audio> 逐段播，段间会有 100~300ms 的重新缓冲黑屏感；
+// Web Audio 的 BufferSource 能按 ctx.currentTime **精确排期**，段与段首尾相接。
+const player = { ctx: null, an: null, gain: null, srcs: [], nextAt: 0, playing: false };
+let playAnalyser = null;
+
+function playerReady() {
+  const ctx = ensureCtx();
+  if (!ctx) return null;
+  if (!player.ctx) {
+    player.ctx = ctx;
+    player.an = makeAnalyser();
+    player.gain = ctx.createGain();
+    player.gain.connect(player.an);
+    player.an.connect(ctx.destination);
+  }
+  if (player.ctx.state === 'suspended') { player.ctx.resume().catch(() => {}); }
+  return player;
+}
+
+// 停止播放（打断 / 挂断 / 新一轮）。注意：不清 gain 节点，下一个 buffer 直接接上
+function stopPlayback() {
+  for (const s of player.srcs) {
+    try { s.stop(); } catch (e) {}
+    try { s.disconnect(); } catch (e) {}
+  }
+  player.srcs = [];
+  player.nextAt = 0;
+  player.playing = false;
   playAnalyser = null;
   analyser = micAnalyser;
   curAudio = null;
 }
 
+// 兼容旧调用点（原来拆 <audio> 用的）
+function detachPlay() { stopPlayback(); }
+
 // 兼容老调用：整条拆掉
 function detach() { detachPlay(); detachMic(); }
+
+// ==================== 流式音频入队 ====================
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// 一段音频到了：解码 -> 按时间轴排期 -> 播。返回 Promise 不阻塞 SSE 读取
+async function enqueueAudio(b64, tok) {
+  const p = playerReady();
+  if (!p) return;
+  let buf;
+  try {
+    buf = await p.ctx.decodeAudioData(b64ToBytes(b64).buffer);
+  } catch (e) {
+    console.warn('音频段解码失败，跳过', e);            // 单段失败不影响后面
+    return;
+  }
+  if (!isToken(tok)) return;                          // 这轮已被打断，丢掉
+
+  const src = p.ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(p.gain);
+  // 排期：比"现在"晚一点点（防止 start 时间已过被吞），并与上一段首尾相接
+  const at = Math.max(p.ctx.currentTime + 0.04, p.nextAt);
+  src.start(at);
+  p.nextAt = at + buf.duration + 0.01;
+  p.srcs.push(src);
+  p.playing = true;
+  playAnalyser = p.an;
+  analyser = p.an;                                    // 让球体跟着她的声音跳
+  if (state !== 'speaking') setState('speaking');
+
+  src.onended = () => {
+    p.srcs = p.srcs.filter(s => s !== src);
+    if (!p.srcs.length) { p.playing = false; onSpeechDrained(); }
+  };
+}
 
 // 给某个 analyser 算音量
 function analyserLevel(an) {
@@ -916,7 +974,7 @@ function setState(s) {
   }
 }
 
-function addRow(who, text, cls) {
+function addRow(who, text, cls, live) {
   const row = document.createElement('div');
   row.className = 'row ' + cls;
   if (who) {
@@ -925,7 +983,8 @@ function addRow(who, text, cls) {
     row.appendChild(w);
   }
   const b = document.createElement('div');
-  b.className = 'bub'; b.textContent = text;
+  b.className = 'bub' + (live ? ' live' : '');    // live = 正在流式输出（尾巴有光标）
+  b.textContent = text;
   row.appendChild(b);
   logEl.appendChild(row);
   logEl.scrollTop = logEl.scrollHeight;
@@ -934,6 +993,7 @@ function addRow(who, text, cls) {
     unread += 1;
     renderUnread();
   }
+  return b;
 }
 function setHint(t) { hint.textContent = t; }
 
@@ -1170,19 +1230,19 @@ function resumeListening(delay) {
              delay == null ? POST_PLAY_GUARD : delay);
 }
 
-// 打断她：停止播放，立刻回到收音
+// 打断她：停播 + 掐掉还没合完的 TTS + 立刻回到收音（流式之后这是常态操作）
 function interruptHer() {
-  if (curAudio) { try { curAudio.pause(); } catch (e) {} }
-  detachPlay();
+  abortTurn();
   bargeFrom = 0;
-  beginPhoneTurn();
+  if (phoneOn) beginPhoneTurn();
+  else setState('idle');
 }
 
 function stopPhone() {
   phoneOn = false;
   phoneBtn.classList.remove('on');
   phoneBtn.textContent = '电话';
-  if (curAudio) { try { curAudio.pause(); } catch (e) {} }
+  abortTurn();
   try { if (phoneRec && phoneRec.state === 'recording') phoneRec.stop(); } catch (e) {}
   if (phoneStream) {
     phoneStream.getTracks().forEach(t => t.stop());
@@ -1195,83 +1255,139 @@ function stopPhone() {
 
 phoneBtn.onclick = () => { phoneOn ? stopPhone() : startPhone(); };
 
-// ==================== 一轮对话 ====================
-async function handleResult(d) {
-  if (!d.ok) {
-    setState('idle');
-    setHint(d.error || '出错了');
-    if (d.user_text) addRow('你', d.user_text, 'me');
-    resumeListening(600);
-    return;
-  }
-  addRow('你', d.user_text, 'me');
-  addRow('E.V.', d.reply_text, 'ev');
+// ==================== 一轮对话（SSE 流式） ====================
+// 服务端事件: meta(识别结果) / delta(增量文字) / audio(一段 mp3) / done / error
+// 前端只做三件事：把文字拼进气泡、把音频排进播放队列、根据状态更新 UI。
 
-  if (!d.audio_b64) {
-    setState('idle');
-    setHint('语音合成失败（' + (d.tts_error || '未知') + '），这条只回了文字');
-    resumeListening(600);
-    return;
-  }
+let streamToken = 0;        // 每轮 +1：旧请求的回调看到这个变了就自我失效
+let activeCtrl = null;      // 当前这轮的 AbortController（打断就是 abort 它）
+let turn = null;            // { token, reply, done, timing }
 
-  const bytes = Uint8Array.from(atob(d.audio_b64), c => c.charCodeAt(0));
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
-  const a = new Audio(url);
-  curAudio = a;
-  const src = attachPlayback(a);
+function isToken(tok) { return !!turn && turn.token === tok; }
 
-  a.onended = () => {
-    try { if (src) src.disconnect(); } catch (e) {}
-    detachPlay();
-    URL.revokeObjectURL(url);
-    const t = d.timing || {};
-    if (phoneOn) { resumeListening(); return; }       // 电话模式：接着听下一句
-    setState('idle');
-    setHint('可以继续说了　（听 ' + (t.stt != null ? t.stt : 0) + 's / 想 '
-            + (t.llm != null ? t.llm : 0) + 's）');
-  };
-  a.onerror = () => {
-    detachPlay();
-    if (phoneOn) { resumeListening(); return; }
-    setState('idle');
-    setHint('音频播放失败');
-  };
+function newTurn() {
+  streamToken += 1;
+  turn = { token: streamToken, reply: '', done: false, timing: null, finished: false };
+  return turn;
+}
 
-  setState('speaking');
-  setHint('她在说话……');
-  try { await a.play(); }
-  catch (e) {
-    detachPlay();
-    if (phoneOn) { setHint('浏览器拦了自动播放 —— 先手动点一下页面'); resumeListening(300); return; }
+// SSE 读取器：fetch + ReadableStream 手搓，因为 EventSource 不能 POST 音频
+async function streamTurn(url, body, hintText) {
+  const t = newTurn();
+  if (activeCtrl) { try { activeCtrl.abort(); } catch (e) {} }
+  const ctrl = new AbortController();
+  activeCtrl = ctrl;
+  stopPlayback();
+
+  setState('thinking');
+  setHint(hintText || '思考中……');
+  const bubble = addRow('E.V.', '', 'ev', true);
+
+  try {
+    const isForm = (typeof FormData !== 'undefined') && (body instanceof FormData);
+    const res = await fetch(url, {
+      method: 'POST', body: body, signal: ctrl.signal,
+      headers: isForm ? undefined : { 'Content-Type': 'application/json' },
+    });
+    if (!res.body) throw new Error('HTTP ' + res.status);
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        let ev;
+        try { ev = JSON.parse(payload); } catch (e) { continue; }
+        if (!isToken(t.token)) return;
+        onEvent(t, ev, bubble);
+      }
+    }
+    // 连接正常结束但没收到 done（后端异常断流）
+    if (isToken(t.token) && !t.done && !t.finished) {
+      t.done = true;
+      if (!player.srcs.length) finishTurn(t);
+    }
+  } catch (e) {
+    if (!isToken(t.token)) return;                    // 被打断引起的 abort，不算错误
+    if (bubble.parentNode) bubble.parentNode.remove();
     setState('idle');
-    setHint('浏览器拦了自动播放，点一下页面再试');
+    setHint('请求失败：' + e.message + '（serve_hf.py 起了吗？）');
+    if (phoneOn) resumeListening(800);
   }
 }
 
-async function post(url, body, thinkingHint) {
-  setState('thinking');
-  setHint(thinkingHint || '思考中……');
-  try {
-    const r = await fetch(url, { method: 'POST', body: body });
-    await handleResult(await r.json());
-  } catch (e) {
+function onEvent(t, ev, bubble) {
+  if (ev.t === 'meta') {
+    if (ev.user_text) addRow('你', ev.user_text, 'me');
+    setHint('在想……');
+  } else if (ev.t === 'delta') {
+    t.reply += ev.d;
+    bubble.textContent = t.reply;
+    if (logOpen) logEl.scrollTop = logEl.scrollHeight;
+  } else if (ev.t === 'audio') {
+    enqueueAudio(ev.b64, t.token);                    // 不 await：边播边收下一段
+  } else if (ev.t === 'done') {
+    if (ev.reply) { t.reply = ev.reply; bubble.textContent = t.reply; }
+    bubble.classList.remove('live');
+    t.done = true;
+    t.timing = ev.timing || {};
+    if (ev.tts_error) t.ttsErr = ev.tts_error;
+    if (!player.srcs.length) finishTurn(t);           // TTS 全失败的极端情况
+  } else if (ev.t === 'error') {
+    bubble.classList.remove('live');
     setState('idle');
-    setHint('请求失败：' + e.message);
-    resumeListening(800);
+    setHint(ev.msg || '出错了');
+    t.finished = true;
+    if (phoneOn) resumeListening(600);
   }
+}
+
+// 最后一段音频播完（或没音频可播）时收尾
+function onSpeechDrained() {
+  if (!turn || !turn.done) return;                    // token 还在来，先别收尾
+  finishTurn(turn);
+}
+
+function finishTurn(t) {
+  if (!isToken(t.token) || t.finished) return;
+  t.finished = true;
+  const tm = t.timing || {};
+  const cost = tm.first_audio
+    ? '（首声 ' + tm.first_audio + 's / 总 ' + tm.total + 's）' : '';
+  if (phoneOn) { resumeListening(); return; }         // 电话模式：接着说
+  setState('idle');
+  setHint(t.ttsErr ? '语音合成失败，这条只有文字' : '可以继续说了　' + cost);
 }
 
 function sendAudio(blob) {
   const fd = new FormData();
   fd.append('audio', blob, 'voice.webm');
-  post('/api/turn', fd, '识别中……');
+  streamTurn('/api/stream/turn', fd, '识别中……');
 }
 
 function sendText(text) {
   text = (text || '').trim();
-  if (!text || state !== 'idle') return;
+  if (!text) return;
   if (phoneOn) { setHint('电话模式下直接说话就行（想打字先点「挂断」）'); return; }
-  post('/api/text', new Blob([JSON.stringify({ text: text })], { type: 'application/json' }), '思考中……');
+  if (state !== 'idle') abortTurn();                  // 正在说/正在想：直接打断再问
+  streamTurn('/api/stream/text', JSON.stringify({ text: text }), '思考中……');
+}
+
+// 打断：停播 + abort 请求（后端 generator 被取消 -> 模型停止生成）+ 作废本轮令牌
+function abortTurn() {
+  if (activeCtrl) { try { activeCtrl.abort(); } catch (e) {} activeCtrl = null; }
+  stopPlayback();
+  turn = null;
+  streamToken += 1;
 }
 
 // ==================== 记录面板（默认隐藏） ====================

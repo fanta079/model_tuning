@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """E.V. 语音对话后端（P1）
 
-链路: 浏览器录音 -> faster-whisper 转文字 -> llama-server(E.V.) 生成回复 -> edge-tts 合成语音 -> 浏览器播放
+链路: 浏览器录音 -> faster-whisper 转文字 -> llama-server(E.V.) 流式生成 -> edge-tts 分段合成 -> 浏览器边收边播
 
 特点
 ----
-* 半双工: 一轮说完才允许下一轮（由前端按钮锁保证，见 app/index.html）
-* 无 agent 能力: 纯对话，不接工具调用
+* **真流式**: LLM 每吐几个 token 就切句 -> 立刻 TTS -> 立刻推给浏览器播，
+  不用等整段回答生成完（首字到出声约 0.4~1.2s）
+* **可打断**: 前端 abort 请求后后端 generator 被取消，模型生成也停下（不会白烧显存）
+* 半双工按钮 / 电话模式都复用同一条流式管道
 * 组件可缺省: STT / TTS / LLM 各自独立，哪个没起会在 /api/status 里标出来
 
 启动
@@ -21,6 +23,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -28,7 +31,7 @@ import time
 import httpx
 import edge_tts
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 # ---- 兼容补丁：PyAV >= 14 删掉了 av.open(metadata_errors=...) ----
 # faster-whisper 1.2.x 解码时仍在传这个参数（它只声明 av>=11，没有上界），
@@ -88,6 +91,11 @@ if not SYSTEM_PROMPT and os.path.isfile(SYSTEM_FILE):
     SYSTEM_PROMPT = open(SYSTEM_FILE, encoding="utf-8").read().strip()
 
 MAX_HISTORY = int(os.environ.get("MAX_HISTORY", "12"))   # 保留最近几轮上下文
+
+# ---- 流式切句参数（想调"多快开口"改这三个）----
+MIN_SEG = int(os.environ.get("MIN_SEG", "6"))            # 少于这么多字不单独切（"嗯。"单念很怪）
+MAX_SEG = int(os.environ.get("MAX_SEG", "42"))           # 一直没标点，最多攒这么长就硬切
+EAGER_DELAY = float(os.environ.get("EAGER_DELAY", "0.55"))  # 首句等这么久还没标点 -> 先切给 TTS
 
 app = FastAPI(title="E.V. Voice")
 
@@ -197,6 +205,241 @@ async def tts(text: str) -> bytes:
     return b"".join(chunks)
 
 
+# ---------------- 流式：切句 / LLM / SSE ----------------
+
+# 硬标点：碰到就切（一句说完）
+HARD_END = "。！？!?…\n"
+# 软标点：句子太长时优先在这些位置下刀
+SOFT_END = "，,、；;：:"
+# 模板残留：模型偶尔把特殊 token / 角色标签吐出来
+CUT_MARKS = ("<|im_end|>", "<|im_start|>", "\nuser", "\nassistant",
+             "\nUser", "\nAssistant")
+
+
+def clean_for_tts(t: str) -> str:
+    """把「给人看的文本」变成「能念的文本」。
+
+    括号里的舞台动作（（轻轻叹气））不该念出来 —— 这是人设数据里最容易
+    带进来的东西，直接送进 TTS 会变成"括号轻轻叹气括号"。
+    """
+    t = re.sub(r"[（(【\[][^）)】\]]*[）)】\]]", "", t)   # 括号旁白
+    t = re.sub(r"[*_`#>~|]+", "", t)                     # markdown 记号
+    t = t.replace("——", "，").replace("—", "，")
+    t = re.sub(r"\s+", " ", t)
+    return t.strip()
+
+
+def take_sentence(buf: str):
+    """从缓冲区切出"一句"。返回 (句子, 剩余)；切不出来返回 ('', buf)。
+
+    三个下刀条件（按优先级）：
+      1. 遇到。！？… 且已经攒够 MIN_SEG 字  -> 正常断句
+      2. 超过 MAX_SEG 字还没句号            -> 退到最后一个逗号切，没有就硬切
+      3. 其他                               -> 继续攒
+    """
+    for i, ch in enumerate(buf):
+        if ch in HARD_END and i + 1 >= MIN_SEG:
+            return buf[:i + 1].strip(), buf[i + 1:].lstrip()
+    if len(buf) >= MAX_SEG:
+        soft = max((buf.rfind(c) for c in SOFT_END), default=-1) + 1
+        cut = soft if soft >= MIN_SEG else MAX_SEG
+        return buf[:cut].strip(), buf[cut:].lstrip()
+    return "", buf
+
+
+def _cut_marks(s: str):
+    """遇到模板残留就截断，返回 (截断后的文本, 是否该停)。"""
+    for m in CUT_MARKS:
+        if m in s:
+            return s.split(m)[0], True
+    return s, False
+
+
+async def llm_stream(user_text: str):
+    """异步产出 LLM 的增量文本。
+
+    后端要是**不支持** stream（比如老版 llama-server、或某个只做非流式的代理），
+    这里会自动降级成整包返回 —— 前端照样能用，只是没有逐字效果。
+    """
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT}] if SYSTEM_PROMPT else []
+    msgs += _history[-MAX_HISTORY:]
+    msgs.append({"role": "user", "content": user_text})
+    payload = {"model": LLM_MODEL, "messages": msgs, "stream": True,
+               "temperature": 0.75, "top_p": 0.9, "max_tokens": 200}
+
+    async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as c:
+        async with c.stream("POST", f"{LLM_BASE}/chat/completions",
+                            json=payload) as r:
+            if r.status_code != 200:
+                body = (await r.aread()).decode("utf-8", "ignore")[:300]
+                raise RuntimeError(f"HTTP {r.status_code} {body}")
+
+            ctype = r.headers.get("content-type", "")
+            if "event-stream" not in ctype:
+                raw = await r.aread()
+                try:
+                    txt = json.loads(raw)["choices"][0]["message"]["content"]
+                except Exception as e:                      # noqa: BLE001
+                    raise RuntimeError(f"后端返回无法解析（不是流式也不是标准 JSON）：{e}")
+                print("[LLM] 后端不支持流式，已降级为整包返回", flush=True)
+                if txt:
+                    yield txt
+                return
+
+            async for line in r.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data:
+                    continue
+                if data == "[DONE]":
+                    break
+                try:
+                    d = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                if d.get("error"):
+                    raise RuntimeError(str(d["error"])[:300])
+                ch = (d.get("choices") or [{}])[0].get("delta", {}).get("content") or ""
+                if ch:
+                    yield ch
+
+
+def sse(obj) -> str:
+    return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+
+def _sse_response(gen) -> StreamingResponse:
+    return StreamingResponse(gen, media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store",
+                                      "X-Accel-Buffering": "no"})
+
+
+async def _sse_error(msg: str) -> StreamingResponse:
+    async def g():
+        yield sse({"t": "error", "msg": msg})
+    return _sse_response(g())
+
+
+async def turn_stream(user_text: str, t0: float, t_stt: float):
+    """一轮完整流水线：LLM 流 -> 切句 -> TTS -> SSE 推给浏览器。
+
+    关键设计：**TTS 和 LLM 并行**。LLM 还在生成第 3 句时，第 1 句的音频
+    已经在浏览器里播了 —— 这就是"不像对讲机"的全部秘密。
+    """
+    out: asyncio.Queue = asyncio.Queue()
+
+    async def emit(obj):
+        await out.put(sse(obj))
+
+    async def worker():
+        seg_q: asyncio.Queue = asyncio.Queue(maxsize=4)   # 有界队列 -> 背压
+        parts: list[str] = []
+        stat = {"first_tok": 0.0, "first_audio": 0.0, "tts_err": "", "seg": 0}
+
+        async def tts_worker():
+            while True:
+                seg = await seg_q.get()
+                if seg is None:
+                    return
+                txt = clean_for_tts(seg)
+                if not txt:
+                    continue
+                try:
+                    audio = await tts(txt)
+                except Exception as e:                    # noqa: BLE001
+                    stat["tts_err"] = f"{type(e).__name__}: {e}"
+                    continue
+                if not stat["first_audio"]:
+                    stat["first_audio"] = time.time() - t0
+                await emit({"t": "audio", "i": stat["seg"], "text": txt,
+                            "b64": base64.b64encode(audio).decode()})
+                stat["seg"] += 1
+
+        tw = asyncio.create_task(tts_worker())
+        reply = ""
+        try:
+            await emit({"t": "meta", "user_text": user_text,
+                        "stt": round(t_stt, 2)})
+            buf = ""
+            t_seg = time.time()
+            stop = False
+            async for d in llm_stream(user_text):
+                if not stat["first_tok"]:
+                    stat["first_tok"] = time.time() - t0
+                d, stop = _cut_marks(d)
+                if d:
+                    parts.append(d)
+                    await emit({"t": "delta", "d": d})
+                    buf += d
+                while True:
+                    seg, buf = take_sentence(buf)
+                    if not seg:
+                        break
+                    await seg_q.put(seg)
+                    t_seg = time.time()
+                # 首句兜底：模型爱铺垫（"这个嘛……"），等不到句号就先切一段出声
+                if not stat["first_audio"] and len(buf) >= MIN_SEG \
+                        and time.time() - t_seg > EAGER_DELAY:
+                    await seg_q.put(buf.strip())
+                    buf, t_seg = "", time.time()
+                if stop:
+                    break
+            if buf.strip():
+                await seg_q.put(buf.strip())
+            await seg_q.put(None)
+            await tw
+
+            reply = "".join(parts).strip()
+            for m in CUT_MARKS:
+                reply = reply.split(m)[0]
+            reply = reply.strip()
+
+            if reply:
+                _history.append({"role": "user", "content": user_text})
+                _history.append({"role": "assistant", "content": reply})
+
+            await emit({"t": "done", "reply": reply, "tts_error": stat["tts_err"],
+                        "timing": {"stt": round(t_stt, 2),
+                                   "first_token": round(stat["first_tok"], 2),
+                                   "first_audio": round(stat["first_audio"], 2),
+                                   "total": round(time.time() - t0, 2)}})
+            print(f"[流式] 首字 {stat['first_tok']:.1f}s / 出声 {stat['first_audio']:.1f}s / "
+                  f"总 {time.time() - t0:.1f}s / {stat['seg']} 段 | "
+                  f"你: {user_text[:20]} | E.V.: {reply[:24]}", flush=True)
+        except asyncio.CancelledError:
+            # 用户打断 / 关页面：把已经说出去的部分记进上下文，别让历史断层
+            part = "".join(parts).strip()
+            if part:
+                _history.append({"role": "user", "content": user_text})
+                _history.append({"role": "assistant", "content": part})
+            print(f"[流式] 已打断（已播 {stat['seg']} 段，保留 {len(part)} 字）",
+                  flush=True)
+            raise
+        except Exception as e:                            # noqa: BLE001
+            await emit({"t": "error",
+                        "msg": f"模型连接失败（serve_hf.py 起了吗？）：{e}"})
+        finally:
+            if not tw.done():
+                tw.cancel()
+            await out.put(None)
+
+    async def run():
+        task = asyncio.create_task(worker())
+        try:
+            while True:
+                item = await out.get()
+                if item is None:
+                    break
+                yield item
+        finally:
+            if not task.done():
+                task.cancel()
+
+    async for chunk in run():
+        yield chunk
+
+
 # ---------------- 路由 ----------------
 
 async def _respond(user_text: str, t0: float, t_stt: float):
@@ -299,13 +542,57 @@ async def turn(audio: UploadFile = File(...)):
 
 @app.post("/api/text")
 async def text_turn(payload: dict):
-    """打字入口：跳过 STT，直接走 LLM -> TTS。麦克风不可用时用它验证整条链路。"""
+    """打字入口（非流式，留给老调用方/curl 调试）。新前端请用 /api/stream/text。"""
     text = (payload or {}).get("text", "").strip()
     if not text:
         return JSONResponse({"ok": False, "error": "空消息"}, status_code=400)
     if len(text) > 2000:
         return JSONResponse({"ok": False, "error": "太长了，说重点"}, status_code=400)
     return await _respond(text, time.time(), 0.0)
+
+
+# ---------------- 流式入口（前端用的就是这两个） ----------------
+
+@app.post("/api/stream/turn")
+async def stream_turn(audio: UploadFile = File(...)):
+    """一轮对话的流式版：音频进 -> SSE 事件流（meta / delta / audio / done）。
+
+    注意：STT 这一段仍然是阻塞的（whisper 是同步库），用 to_thread 丢到线程池，
+    不挡事件循环 —— 否则 TTS / 其他请求会被一起卡住。
+    """
+    t0 = time.time()
+    raw = await audio.read()
+    if len(raw) < 1200:
+        return await _sse_error("录音太短，再说一次？")
+
+    ext = os.path.splitext(audio.filename or "")[1] or ".webm"
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+        f.write(raw)
+        tmp = f.name
+    try:
+        user_text = await asyncio.to_thread(stt, tmp)
+    except Exception as e:                            # noqa: BLE001
+        return await _sse_error(f"语音识别失败：{e}")
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+    if not user_text:
+        return await _sse_error("没听清，再说一次？")
+    return _sse_response(turn_stream(user_text, t0, time.time() - t0))
+
+
+@app.post("/api/stream/text")
+async def stream_text(payload: dict):
+    """打字入口的流式版：跳过 STT，直接 LLM 流 -> TTS 流。"""
+    text = (payload or {}).get("text", "").strip()
+    if not text:
+        return await _sse_error("空消息")
+    if len(text) > 2000:
+        return await _sse_error("太长了，说重点")
+    return _sse_response(turn_stream(text, time.time(), 0.0))
 
 
 if __name__ == "__main__":

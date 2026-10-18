@@ -16,7 +16,7 @@ set -o pipefail
 BASE="/mnt/e/VMOS_workspace/model_tuning"
 PY="${PY:-$HOME/venvs/ft/bin/python}"
 N="${N:-520}"
-EPOCHS="${EPOCHS:-3}"
+EPOCHS="${EPOCHS:-2}"
 OUT_DIR="${OUT_DIR:-$HOME/ft_outputs/ev-v5}"
 SKIP_GEN=0
 SKIP_TRAIN=0
@@ -64,11 +64,10 @@ else
 fi
 
 # ---------------- 2) 重建训练集（配比 + 风格清洗）----------------
-echo "[2/3] 重建训练集：help 50% / chat 42% / intro 5%"
+echo "[2/3] 重建训练集：help 40% / chat 60%（按 assistant 轮次）"
 "$PY" rebuild_dataset.py \
-    --src help=my_data/help_api.json+my_data/help_api_v2.json:0.50 \
-    --src chat=my_data/ev3_all.json:0.42 \
-    --src intro=my_data/intro_api.json:0.05 \
+    --src help=my_data/help_api.json+my_data/help_api_v2.json:0.40 \
+    --src chat=my_data/ev3_all.json:0.60 \
     --out my_data/ev5_all.json --keep-ellipsis 0.08 || { echo "[x] 重建失败"; exit 1; }
 
 if [ "$SKIP_TRAIN" -eq 1 ]; then

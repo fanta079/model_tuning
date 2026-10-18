@@ -155,11 +155,13 @@ bash run_v5_pipeline.sh --skip-train     # 只生成 + 重建，先看数据报�
 python gen_persona_data.py --scenes personas/help_pack.json \
     --n 520 --per-call 10 --out my_data/help_api_v2.json     # 可续传
 python rebuild_dataset.py \
-    --src help=my_data/help_api.json+my_data/help_api_v2.json:0.50 \
-    --src chat=my_data/ev3_all.json:0.42 \
-    --src intro=my_data/intro_api.json:0.05 \
+    --src help=my_data/help_api.json+my_data/help_api_v2.json:0.40 \
+    --src chat=my_data/ev3_all.json:0.60 \
     --out my_data/ev5_all.json --keep-ellipsis 0.08
 ```
+
+> ⚠️ 别再单独把 `intro_api.json` 当一个来源：那 80 条是 `ev3_all.json` 的子集，
+> 跨来源去重后只剩 10 条，会变成配比天花板，把总量从 1500 条压到 245 条。
 
 `rebuild_dataset.py` 会打印三段报告（清洗前 / 配比后 / 划分），**训练前必看**：
 - 开头省略号占比应在 3%~9%（默认留 8% 做变异）
