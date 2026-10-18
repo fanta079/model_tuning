@@ -1,6 +1,6 @@
 {
   "_说明": "E.V. 的音色配置。改完重启 server.py 生效（也可用同名环境变量临时覆盖，如 TTS_PITCH=-20Hz）。",
-  "_当前选择": "试听候选第 3 组「Xiaoxiao 冷」—— 推荐起点。听完 app/voice_samples/index.html 后按喜好微调。",
+  "_当前选择": "Qwen3-TTS VoiceDesign 候选 [3] 清冷少女，已锁定为 app/voice_lock/ref.wav",
   "_旋钮含义": {
     "voice": "音色底子（换一个就是换一个人）",
     "rate": "语速，负值更慢 → 显得不在乎",
@@ -10,5 +10,15 @@
   "voice": "zh-CN-XiaoxiaoNeural",
   "rate": "-15%",
   "pitch": "-15Hz",
-  "volume": "+0%"
+  "volume": "+0%",
+  "engine": "qwen3tts",
+  "qwen_ref_audio": "app/voice_lock/ref.wav",
+  "qwen_ref_text": "嗯，在。有事就说。这个嘛……你想清楚了再问。别把简单的事弄复杂，数据不会骗人。",
+  "qwen_design": {
+    "id": 3,
+    "name": "清冷少女",
+    "instruct": "十七八岁少女，嗓音偏低，语速不快，语气冷静疏远，句尾略下沉，偶尔透出一点不耐烦。",
+    "lang": "Chinese"
+  },
+  "locked_at": "2026-10-18 14:56:08"
 }
