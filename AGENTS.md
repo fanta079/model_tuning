@@ -71,6 +71,7 @@ model_tuning/
 │   │   ├── voice.json            🎭 音色配置 (voice / rate / pitch)
 │   │   ├── try_voices.py         音色试听台 (生成 8 组候选 + 可点击的试听网页)
 │   │   ├── design_voice.py       🎭 文字造音色 (Qwen3-TTS VoiceDesign) + 试听页 + --lock 锁定参考音频
+│   │   ├── tts_server.py         🔊 本地 TTS 服务 (Qwen3-TTS 0.6B 克隆 ref.wav, 端口 8092)
 │   │   └── voice_samples/        试听产物 (已 gitignore, 可随时重新生成)
 │   ├── setup_app.sh              独立 venv ~/venvs/evapp + 装依赖 + 预下 whisper
 │   ├── setup_tts.sh              独立 venv ~/venvs/tts + qwen-tts + 下 VoiceDesign 权重 (音色设计用)
@@ -219,6 +220,12 @@ source ~/venvs/tts/bin/activate
 python app/design_voice.py --dry-run                  # 只打印 8 条描述词, 不加载模型
 python app/design_voice.py --only 1,3,4               # 生成候选 + 试听页
 python app/design_voice.py --lock 3                   # 锁定成 app/voice_lock/ref.wav + 写 voice.json
+
+# 让她用自己的声音说话（Qwen3-TTS 0.6B 克隆，常驻 ~2GB，和 serve_hf 并存）
+bash setup_tts.sh --only base                         # 只补 0.6B Base 权重（1.5GB）
+python app/tts_server.py --check                      # 自检：念一句存成 voice_lock/check.wav
+python app/tts_server.py                              # 起服务 :8092
+TTS_BASE=http://127.0.0.1:8092 bash start_ev.sh       # 语音助手改用本地 TTS（不设就走 edge-tts）
 
 # 起助手（另开终端先起 llama-server）
 bash run_app.sh                                       # 打开 http://localhost:8090

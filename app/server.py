@@ -84,6 +84,14 @@ TTS_RATE = os.environ.get("TTS_RATE") or _vcfg.get("rate", "-12%")
 TTS_PITCH = os.environ.get("TTS_PITCH") or _vcfg.get("pitch", "-10Hz")
 TTS_VOLUME = os.environ.get("TTS_VOLUME") or _vcfg.get("volume", "+0%")
 
+# ---- 换引擎开关：设了 TTS_BASE 就不走 edge-tts，改调本地 Qwen3-TTS 克隆服务 ----
+#   TTS_BASE=http://127.0.0.1:8092 bash start_ev.sh
+# 为什么是"服务"而不是在本进程里加载模型：
+#   1) 显存独立核算，TTS 挂了不影响对话；2) 模型只加载一次；3) 换音色不用重启前端
+TTS_BASE = os.environ.get("TTS_BASE", "").rstrip("/")
+TTS_TIMEOUT = float(os.environ.get("TTS_TIMEOUT", "30"))
+TTS_LANG = os.environ.get("TTS_LANG", "Chinese")
+
 # system 提示词放在 app/system.txt，随时可改，改完重启生效
 SYSTEM_FILE = os.path.join(HERE, "system.txt")
 SYSTEM_PROMPT = os.environ.get("EV_SYSTEM", "")
@@ -197,12 +205,41 @@ async def llm(user_text: str) -> str:
 
 
 async def tts(text: str) -> bytes:
+    """把一句文字变成音频字节。两种引擎，由 TTS_BASE 决定。
+
+    返回的是**完整一段**（mp3 或 wav）—— 前端用 decodeAudioData 解，
+    格式无所谓，所以本地服务直接给 wav（少一层编码，还能少几十毫秒）。
+    """
+    if TTS_BASE:
+        return await _tts_remote(text)
+
     comm = edge_tts.Communicate(text, TTS_VOICE, rate=TTS_RATE,
                                 pitch=TTS_PITCH, volume=TTS_VOLUME)
     chunks = [c["data"] async for c in comm.stream() if c["type"] == "audio"]
     if not chunks:
         raise RuntimeError("TTS 没有返回音频")
     return b"".join(chunks)
+
+
+_tts_http: "httpx.AsyncClient | None" = None
+
+
+def _tts_client() -> httpx.AsyncClient:
+    """复用连接池：一轮回答要按句调 3~6 次，每次新建 client 会白加几十毫秒。"""
+    global _tts_http
+    if _tts_http is None:
+        _tts_http = httpx.AsyncClient(timeout=TTS_TIMEOUT)
+    return _tts_http
+
+
+async def _tts_remote(text: str) -> bytes:
+    r = await _tts_client().post(f"{TTS_BASE}/tts",
+                                 json={"text": text, "language": TTS_LANG})
+    if r.status_code != 200:
+        raise RuntimeError(f"TTS 服务 {r.status_code}: {r.text[:120]}")
+    if not r.content:
+        raise RuntimeError("TTS 服务返回空音频")
+    return r.content
 
 
 # ---------------- 流式：切句 / LLM / SSE ----------------
@@ -508,11 +545,29 @@ async def status():
             llm_msg = "就绪" if llm_ok else f"HTTP {r.status_code}"
     except Exception as e:                      # noqa: BLE001
         llm_msg = f"{type(e).__name__}"
+
+    # TTS：走本地服务时真的探一下活，不然它挂了界面还显示绿的
+    tts_ok, tts_msg = True, f"edge {TTS_VOICE} rate={TTS_RATE} pitch={TTS_PITCH}"
+    if TTS_BASE:
+        try:
+            async with httpx.AsyncClient(timeout=2) as c:
+                r = await c.get(f"{TTS_BASE}/health")
+                d = r.json() if r.status_code == 200 else {}
+            tts_ok = bool(d.get("ok"))
+            if tts_ok:
+                name = os.path.basename(str(d.get("model", "")).rstrip("/"))
+                tts_msg = (f"qwen3tts {name} "
+                           f"ref {d.get('ref_seconds', '?')}s")
+            else:
+                tts_msg = "模型还没加载完" if r.status_code == 200 else f"HTTP {r.status_code}"
+        except Exception as e:                  # noqa: BLE001
+            tts_ok, tts_msg = False, f"连不上 {TTS_BASE}（{type(e).__name__}）"
+
     return {
         "stt": {"ok": model is not None, "msg": err or f"{WHISPER_MODEL}",
                 "loading": loading},
         "llm": {"ok": llm_ok, "msg": llm_msg, "base": LLM_BASE},
-        "tts": {"ok": True, "msg": f"{TTS_VOICE} rate={TTS_RATE} pitch={TTS_PITCH}"},
+        "tts": {"ok": tts_ok, "msg": tts_msg, "base": TTS_BASE or "edge-tts"},
         "system_prompt": SYSTEM_PROMPT[:120],
         "turns": len(_history) // 2,
     }
