@@ -6,362 +6,453 @@
 <title>E.V.</title>
 <!-- 手机"添加到主屏幕"后就是个 App：无地址栏、独立任务卡片 -->
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#05080b">
+<meta name="theme-color" content="#04070a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" type="image/png" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <style>
+  /* ==================================================================
+     E.V. — JARVIS / FRIDAY 风格全息控制台
+     设计原则（上一版踩过的坑）：
+       1. 球必须是绝对主角 —— 侧栏会把它挤成配角，所以只留单列
+       2. 控件不藏进弹出面板 —— 常用的四个（说话/电话/打字/清空）常显
+       3. 配色是「青色数据 + 琥珀标签」，不是「一片青」也不是「一片金」
+       4. 不用圆角大卡片，用发丝线 + 切角 + 角标 —— HUD 靠线，不靠块
+     ================================================================== */
   :root{
-    --bg:#05080b;
-    --ink:#d9e8f2;
-    --ink-hi:#f2fbff;
-    --dim:rgba(206,224,236,.74);
-    --dim2:rgba(206,224,236,.50);
-    --line:rgba(152,203,229,.14);
-    --line2:rgba(152,203,229,.26);
-    --cy:#7fe3ff;
-    --amber:#ffb35c;
-    --red:#ff6b5e;
-    --grn:#5ee0a8;
-    --violet:#a78bfa;
+    --bg:#04070a;
+    --bg2:#070c12;
+    --ink:#cfe3f2;
+    --ink-hi:#eef9ff;
+    --dim:rgba(186,214,232,.62);
+    --dim2:rgba(186,214,232,.38);
+    --line:rgba(120,190,225,.11);
+    --line2:rgba(120,190,225,.22);
+    --cy:#5fd8ff;
+    --cy-dim:#2ea6cf;
+    --amber:#ffb347;          /* JARVIS 的金 —— 只给小标签和角标用 */
+    --red:#ff5f52;
+    --grn:#4fe0b0;
+    --violet:#9d8cff;
     --mono:ui-monospace,"Cascadia Mono","JetBrains Mono","SF Mono",Consolas,monospace;
     --sans:"Bahnschrift","DIN Alternate","Segoe UI Variable Display","PingFang SC","Microsoft YaHei",sans-serif;
   }
   *{box-sizing:border-box}
-  /* 暗底上浏览器默认的选中色几乎看不见，选个字都费劲 —— 显式给一个高对比的 */
-  ::selection{background:rgba(127,227,255,.32);color:#fff}
-  ::-moz-selection{background:rgba(127,227,255,.32);color:#fff}
-  html{height:100%;-webkit-text-size-adjust:100%}
+  ::selection{background:rgba(95,216,255,.30);color:#fff}
+  ::-moz-selection{background:rgba(95,216,255,.30);color:#fff}
+  html,body{height:100%}
+  html{-webkit-text-size-adjust:100%;background:var(--bg)}
+
+  /* 单列三行：顶栏 / 舞台 / 控制条。没有左右栏 —— 球占满中间。
+     ⚠️ grid-template-columns 必须显式写 minmax(0,1fr)：
+     只写 grid-template-rows 时，隐式列是 auto，会被顶栏内容（版本号+按钮）
+     撑到比视口更宽，整页向右溢出，球和底栏一起被切掉 —— 手机端就是这个症状 */
   body{
     margin:0;overflow:hidden;color:var(--ink);background:var(--bg);
     font:14px/1.65 var(--sans);
-    display:grid;
-    grid-template-rows:38px minmax(0,1fr) auto;
-    grid-template-columns:214px minmax(0,1fr) 296px;
-    grid-template-areas:"head head head" "left stage right" "foot foot foot";
+    display:grid;grid-template-rows:44px minmax(0,1fr) auto;
+    grid-template-columns:minmax(0,1fr);
   }
-  /* 底纹：极细网格 + 扫描线 + 暗角，三层叠加，几乎看不见但撑起质感 */
+
+  /* 底纹三层：极细网格（撑质感）→ 扫描线（CRT 味）→ 暗角（聚焦中心） */
   body::before{
     content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
     background-image:
-      linear-gradient(rgba(127,227,255,.030) 1px,transparent 1px),
-      linear-gradient(90deg,rgba(127,227,255,.030) 1px,transparent 1px);
-    background-size:32px 32px;
-    -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 46%,#000 0%,transparent 78%);
-            mask-image:radial-gradient(ellipse 70% 60% at 50% 46%,#000 0%,transparent 78%);
+      linear-gradient(rgba(95,216,255,.032) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(95,216,255,.032) 1px,transparent 1px);
+    background-size:44px 44px;
+    -webkit-mask-image:radial-gradient(ellipse 66% 62% at 50% 42%,#000 0%,transparent 76%);
+            mask-image:radial-gradient(ellipse 66% 62% at 50% 42%,#000 0%,transparent 76%);
   }
   body::after{
     content:"";position:fixed;inset:0;pointer-events:none;z-index:60;
     background:
-      repeating-linear-gradient(0deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px),
-      radial-gradient(ellipse 76% 70% at 50% 44%,transparent 40%,rgba(0,0,0,.72) 100%);
+      repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px),
+      radial-gradient(ellipse 82% 74% at 50% 40%,transparent 38%,rgba(0,0,0,.78) 100%);
   }
   body > *{position:relative;z-index:1}
 
-  /* 切角：HUD 的招牌。任何带 .cut 的块都切掉左上 + 右下 */
   .cut{clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
-  .cut-sm{clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
-
-  /* 9px 等宽大写标签：HUD 里所有「说明文字」都是这个规格 */
-  /* 字号从 9 提到 10、字距收窄 —— 9px + .24em 在 Windows 上基本糊成一团 */
-  .k{font:10px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim2)}
+  .k{font:9.5px/1.2 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--dim2)}
   .sec{
-    font:10px/1.2 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim);
-    display:flex;align-items:center;gap:8px;margin:0 0 8px;
+    font:9.5px/1.2 var(--mono);letter-spacing:.20em;text-transform:uppercase;
+    color:var(--amber);display:flex;align-items:center;gap:9px;
   }
-  .sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent)}
+  .sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(255,179,71,.22),transparent)}
 
-  /* ---------- 顶栏 ---------- */
+  /* ==================== 顶栏 ==================== */
   header{
-    grid-area:head;display:flex;align-items:center;gap:12px;padding:0 14px;
+    display:flex;align-items:center;gap:14px;padding:0 18px;
     border-bottom:1px solid var(--line2);position:relative;
-    background:linear-gradient(180deg,rgba(11,19,26,.92),rgba(5,8,11,.30));
+    background:linear-gradient(180deg,rgba(8,14,20,.94),rgba(4,7,10,.25));
   }
+  /* 顶栏底边：左端一道青光扫出去，HUD 的「设备在运行」暗示 */
   header::after{
     content:"";position:absolute;left:0;bottom:-1px;height:1px;right:0;
-    background:linear-gradient(90deg,var(--cy) 0%,rgba(127,227,255,.10) 26%,transparent 55%);
-    opacity:.55;pointer-events:none;
+    background:linear-gradient(90deg,rgba(95,216,255,.75) 0%,rgba(95,216,255,.14) 22%,transparent 52%);
+    pointer-events:none;
   }
   header h1{
-    margin:0;font:600 13px/1 var(--sans);letter-spacing:.52em;color:var(--ink-hi);
+    margin:0;font:600 14px/1 var(--sans);letter-spacing:.58em;color:var(--ink-hi);
     display:flex;align-items:baseline;
   }
   header h1 small{
-    font:10px/1 var(--mono);letter-spacing:.14em;color:var(--dim2);margin-left:11px;
-    text-transform:uppercase;font-weight:400;
+    font:9.5px/1 var(--mono);letter-spacing:.22em;color:var(--amber);
+    margin-left:13px;text-transform:uppercase;font-weight:400;opacity:.78;
   }
-  /* 状态灯：呼吸只走透明度和一点点尺寸，不做位移 —— 位移是廉价感的来源 */
+  /* 状态灯：方形小点，不带圆角 —— 圆形会变成「App 通知」 */
   #dot{
-    width:6px;height:6px;flex:none;background:var(--dim2);
-    box-shadow:0 0 0 1px rgba(152,203,229,.20);
-    transition:background .25s;
+    width:5px;height:5px;flex:none;background:var(--dim2);
+    box-shadow:0 0 0 1px rgba(120,190,225,.18);transition:background .25s;
   }
-  #dot.on{background:var(--cy);animation:breathe 2.4s ease-in-out infinite}
-  #dot.rec{background:var(--red);animation:breathe 1.1s ease-in-out infinite}
-  #dot.think{background:var(--violet);animation:breathe .9s ease-in-out infinite}
-  #dot.speak{background:var(--grn);animation:breathe 1.4s ease-in-out infinite}
-  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
+  #dot.on{background:var(--cy);animation:breathe 2.4s ease-in-out infinite;box-shadow:0 0 8px rgba(95,216,255,.65)}
+  #dot.rec{background:var(--red);animation:breathe 1.1s ease-in-out infinite;box-shadow:0 0 8px rgba(255,95,82,.65)}
+  #dot.think{background:var(--violet);animation:breathe .9s ease-in-out infinite;box-shadow:0 0 8px rgba(157,140,255,.65)}
+  #dot.speak{background:var(--grn);animation:breathe 1.4s ease-in-out infinite;box-shadow:0 0 8px rgba(79,224,176,.65)}
+  @keyframes breathe{0%,100%{opacity:.4}50%{opacity:1}}
   #stateLbl{
-    font:11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
-    color:var(--ink);min-width:72px;
+    font:10.5px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink);min-width:74px;
   }
   #health{
-    margin-left:auto;font:10.5px/1.55 var(--mono);letter-spacing:.03em;color:var(--dim);
+    margin-left:auto;font:10px/1.5 var(--mono);letter-spacing:.04em;color:var(--dim);
     text-align:right;text-transform:uppercase;white-space:nowrap;
   }
   #health .bad{color:var(--red)}
   #health .good{color:var(--grn)}
+  #health i{color:rgba(186,214,232,.22);font-style:normal;padding:0 3px}
   #logToggle{
-    height:24px;padding:0 10px;flex:none;
-    background:transparent;border:1px solid var(--line2);color:var(--dim);
-    font:10.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
-    display:inline-flex;align-items:center;gap:6px;transition:.15s;
+    height:26px;padding:0 11px;flex:none;background:transparent;
+    border:1px solid var(--line2);color:var(--dim);
+    font:10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;transition:.15s;
   }
-  #logToggle:hover{border-color:rgba(127,227,255,.55);color:var(--ink-hi)}
-  #logToggle[aria-pressed="true"]{border-color:rgba(127,227,255,.55);color:var(--cy);background:rgba(127,227,255,.07)}
+  #logToggle:hover{border-color:rgba(95,216,255,.55);color:var(--ink-hi)}
+  #logToggle[aria-pressed="true"]{border-color:rgba(95,216,255,.55);color:var(--cy);background:rgba(95,216,255,.07)}
   #unread{
     display:none;min-width:14px;height:14px;padding:0 3px;
-    background:var(--amber);color:#150c02;font:700 9px/14px var(--mono);
+    background:var(--amber);color:#160c00;font:700 9px/14px var(--mono);
     letter-spacing:0;text-align:center;
   }
   #unread.on{display:inline-block}
   #buildStamp{
-    font:9.5px/1 var(--mono);letter-spacing:.06em;color:rgba(206,224,236,.34);
+    font:9px/1 var(--mono);letter-spacing:.08em;color:rgba(186,214,232,.3);
     cursor:pointer;user-select:none;white-space:nowrap;
   }
   #buildStamp:hover{color:var(--dim)}
 
-  /* ---------- 左：遥测面板 ---------- */
-  #panelL{
-    grid-area:left;border-right:1px solid var(--line);
-    padding:13px 13px 10px;display:flex;flex-direction:column;gap:16px;
-    overflow:hidden;min-height:0;
+  /* ==================== 舞台 ==================== */
+  #stage{
+    position:relative;min-height:0;min-width:0;overflow:hidden;
+    display:flex;flex-direction:column;align-items:center;
+    padding:0 16px 6px;
   }
-  .ro{
-    display:flex;align-items:baseline;justify-content:space-between;gap:8px;
-    padding:4px 0;border-bottom:1px solid rgba(152,203,229,.045);
+  /* 中心一团极淡的青光 + 底部一条「地平线」，让球像浮在暗室里 */
+  #stage::before{
+    content:"";position:absolute;left:50%;top:46%;width:120vmin;height:120vmin;
+    transform:translate(-50%,-50%);pointer-events:none;
+    background:radial-gradient(circle,rgba(95,216,255,.075) 0%,rgba(95,216,255,.028) 32%,transparent 62%);
   }
-  .ro:last-child{border-bottom:none}
-  .ro .v{
-    font:11.5px/1 var(--mono);letter-spacing:.04em;color:var(--ink);
-    font-variant-numeric:tabular-nums;text-align:right;
-    max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  }
-  .ro .v.cy{color:var(--cy)}
-  .ro .v.dim{color:var(--dim)}
-  #tLevelBar{
-    height:3px;margin:2px 0 6px;background:rgba(152,203,229,.09);position:relative;overflow:hidden;
-  }
-  #tLevelBar i{
-    position:absolute;left:0;top:0;bottom:0;width:0;
-    background:linear-gradient(90deg,rgba(127,227,255,.45),var(--cy));
-    transition:width .07s linear;
-  }
-  /* 侧栏底部竖排刻度尺，纯装饰 */
-  #panelL .spacer{flex:1;min-height:8px}
-  #panelL .rule{
-    height:26px;border-top:1px solid var(--line);
-    background-image:repeating-linear-gradient(90deg,rgba(152,203,229,.26) 0 1px,transparent 1px 6px);
-    opacity:.75;
+  #stage::after{
+    content:"";position:absolute;left:50%;bottom:0;width:100%;height:34%;
+    transform:translateX(-50%);pointer-events:none;
+    background:linear-gradient(0deg,rgba(95,216,255,.035),transparent 70%);
   }
 
-  /* ---------- 中：舞台 ---------- */
-  #stage{
-    grid-area:stage;position:relative;min-height:0;min-width:0;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:0;padding:10px 20px 8px;
+  /* 四角定位角标：HUD 的基本礼节。四个角，长短边不对称才像仪器 */
+  .brk{position:absolute;width:26px;height:26px;pointer-events:none;z-index:3;opacity:.75}
+  .brk.a{left:16px;top:14px;border-left:1px solid rgba(95,216,255,.42);border-top:1px solid rgba(95,216,255,.42)}
+  .brk.b{right:16px;top:14px;border-right:1px solid rgba(95,216,255,.42);border-top:1px solid rgba(95,216,255,.42)}
+  .brk.c{left:16px;bottom:14px;border-left:1px solid rgba(95,216,255,.30);border-bottom:1px solid rgba(95,216,255,.30)}
+  .brk.d{right:16px;bottom:14px;border-right:1px solid rgba(95,216,255,.30);border-bottom:1px solid rgba(95,216,255,.30)}
+
+  /* 四角遥测：不占列，只贴在舞台边缘。信息做「存在的证据」，不做面板 */
+  .hud{
+    position:absolute;top:16px;z-index:4;pointer-events:none;
+    display:flex;flex-direction:column;gap:3px;min-width:132px;
   }
-  /* 四角定位标记（两元素 x 两伪元素） */
-  .brk{position:absolute;width:22px;height:22px;pointer-events:none;z-index:2}
-  .brk.a{left:12px;top:10px;border-left:1px solid rgba(127,227,255,.28);border-top:1px solid rgba(127,227,255,.28)}
-  .brk.b{right:12px;bottom:10px;border-right:1px solid rgba(127,227,255,.28);border-bottom:1px solid rgba(127,227,255,.28)}
+  #teleL{left:26px}
+  #teleR{right:26px;text-align:right}
+  .hudT{
+    font:9px/1 var(--mono);letter-spacing:.26em;text-transform:uppercase;
+    color:var(--amber);opacity:.62;margin-bottom:5px;
+  }
+  .ro{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:3px 0;border-bottom:1px solid rgba(120,190,225,.05);
+  }
+  #teleR .ro{flex-direction:row-reverse}
+  .ro:last-child{border-bottom:none}
+  .ro .v{
+    font:11px/1 var(--mono);letter-spacing:.04em;color:var(--ink);
+    font-variant-numeric:tabular-nums;text-align:right;
+    max-width:136px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .ro .v.cy{color:var(--cy)}
+  .ro .v.dim{color:var(--dim2)}
+  #tLevelBar{height:2px;margin:3px 0 2px;background:rgba(120,190,225,.10);position:relative;overflow:hidden}
+  #tLevelBar i{
+    position:absolute;left:0;top:0;bottom:0;width:0;
+    background:linear-gradient(90deg,rgba(95,216,255,.40),var(--cy));
+    transition:width .07s linear;
+  }
+
+  /* 左右竖刻度尺：只是填充两侧的空白，让"中间一个球漂在真空里"变成"仪器面板围绕核心"。
+     纯装饰，不承载任何信息，所以透明度压得很低 */
+  .gauge{
+    position:absolute;top:50%;transform:translateY(-50%);z-index:3;pointer-events:none;
+    width:1px;height:min(40%,360px);
+    background-image:repeating-linear-gradient(180deg,rgba(95,216,255,.26) 0 1px,transparent 1px 10px);
+    -webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);
+            mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);
+  }
+  .gauge::after{
+    content:"";position:absolute;inset:0;
+    background-image:repeating-linear-gradient(180deg,rgba(95,216,255,.50) 0 1px,transparent 1px 50px);
+  }
+  .gauge.gL{left:44px}
+  .gauge.gR{right:44px}
+
+  /* 球：留白吃掉剩余高度，球自己按视口算 —— 这是它当主角的前提 */
+  #orbStage{
+    flex:1 1 auto;min-height:0;width:100%;
+    display:flex;align-items:center;justify-content:center;
+    position:relative;z-index:2;padding:4px 0;
+  }
+  /* 关键：用 height 定尺寸 + width:auto + max-height:100%。
+     这样对话变长、球区被挤压时，球会等比缩小而不是被裁掉一半 */
   #orb{
-    width:min(340px,44vh);aspect-ratio:1;cursor:pointer;display:block;
+    height:min(54vh,46vw,600px);width:auto;max-height:100%;max-width:100%;
+    aspect-ratio:1;cursor:pointer;display:block;
     touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+    filter:drop-shadow(0 0 46px rgba(95,216,255,.20));
   }
-  #orb:focus-visible{outline:1px solid rgba(127,227,255,.5);outline-offset:8px}
+  #orb:focus-visible{outline:1px solid rgba(95,216,255,.5);outline-offset:12px}
+  /* 球下方的三行状态（录音计时/电平/设备名）：固定高度，避免出现时把球顶上去 */
+  #orbInfo{
+    flex:none;display:flex;flex-direction:column;align-items:center;
+    height:38px;justify-content:flex-start;position:relative;z-index:2;
+  }
   #recTimer{
-    height:18px;font:11.5px/1 var(--mono);letter-spacing:.10em;color:var(--red);
+    height:17px;
+    font:11px/1 var(--mono);letter-spacing:.14em;color:var(--red);
     text-transform:uppercase;opacity:0;transition:opacity .2s;
   }
   #recTimer.on{opacity:1}
-  #meter{
-    width:min(240px,52%);height:2px;opacity:0;transition:opacity .2s;
-    background:rgba(255,107,94,.16);
-  }
+  #meter{width:min(220px,50%);height:2px;margin-top:3px;opacity:0;transition:opacity .2s;background:rgba(255,95,82,.16)}
   #meter.on{opacity:1}
   #meterFill{height:100%;width:0;background:var(--red);transition:width .06s linear}
   #devInfo{
-    height:16px;font:10px/1 var(--mono);letter-spacing:.10em;color:var(--dim);
+    height:15px;margin-top:3px;
+    font:9.5px/1 var(--mono);letter-spacing:.12em;color:var(--dim2);
     text-transform:uppercase;opacity:0;transition:opacity .2s;
     max-width:92%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
   #devInfo.on{opacity:1}
-  #waveWrap{width:100%;max-width:620px;margin-top:6px}
-  #wave{width:100%;height:54px;display:block}
+
+  /* 声频：紧贴球下方的一条细带，不抢戏 */
+  #waveWrap{width:min(560px,86%);flex:none;margin:2px 0 6px;position:relative;z-index:2}
+  #wave{width:100%;height:42px;display:block}
   #waveWrap .ruler{
-    height:9px;margin-top:-1px;
-    border-top:1px solid var(--line);
-    background-image:repeating-linear-gradient(90deg,rgba(152,203,229,.20) 0 1px,transparent 1px 13px);
+    height:7px;margin-top:-1px;border-top:1px solid rgba(120,190,225,.10);
+    background-image:repeating-linear-gradient(90deg,rgba(120,190,225,.16) 0 1px,transparent 1px 15px);
     opacity:.8;
   }
 
-  /* ---------- 右：对话记录 ---------- */
-  #panelR{
-    grid-area:right;border-left:1px solid var(--line);
-    display:flex;flex-direction:column;min-height:0;overflow:hidden;
-    background:linear-gradient(180deg,rgba(8,14,19,.55),rgba(5,8,11,.15));
+  /* 对话流：球下方居中窄栏。有它才像「有记忆」，不占侧栏才不像「后台系统」 */
+  #logWrap{
+    flex:none;width:min(720px,94%);max-height:min(30vh,232px);
+    display:flex;flex-direction:column;min-height:0;position:relative;z-index:2;
+    overflow:hidden;transition:max-height .28s cubic-bezier(.2,.7,.3,1),opacity .2s;
   }
-  #panelR .sec{margin:12px 13px 0}
+  #logWrap .sec{margin-bottom:7px}
+  body.nolog #logWrap{max-height:0;opacity:0;overflow:hidden;pointer-events:none}
   #log{
-    flex:1;min-height:0;overflow-y:auto;padding:10px 13px 14px;
-    display:flex;flex-direction:column;gap:9px;
-    scrollbar-width:thin;scrollbar-color:rgba(152,203,229,.20) transparent;
+    flex:1;min-height:0;overflow-y:auto;padding:0 4px 4px 2px;
+    display:flex;flex-direction:column;gap:8px;
+    scrollbar-width:thin;scrollbar-color:rgba(120,190,225,.18) transparent;
   }
+  /* 这里原来有一层 82%~100% 的渐隐遮罩，想把底部边缘"化开"。
+     实际效果是把最后一行字的下半截也一起吃掉（尤其只有一行时），已删掉 */
   #log::-webkit-scrollbar{width:3px}
-  #log::-webkit-scrollbar-thumb{background:rgba(152,203,229,.22)}
-  /* 不用气泡：左侧一根竖线 + 小标签，信息密度更高，也更像终端记录 */
-  .row{padding-left:9px;border-left:1px solid var(--line2);max-width:100%}
-  .row.me{border-left-color:rgba(127,227,255,.34)}
-  .row.ev{border-left-color:rgba(94,224,168,.28)}
+  #log::-webkit-scrollbar-thumb{background:rgba(120,190,225,.20)}
+  /* 竖线 + 小标签。比气泡密度高，也更像录音转写稿 */
+  .row{padding-left:10px;border-left:1px solid var(--line2);max-width:100%}
+  .row.me{border-left-color:rgba(95,216,255,.34)}
+  .row.ev{border-left-color:rgba(79,224,176,.26)}
+  .row.sys{border-left-color:rgba(120,190,225,.12)}
   .who{
-    font:10px/1 var(--mono);letter-spacing:.10em;text-transform:uppercase;
-    color:var(--dim);margin-bottom:5px;
+    font:9px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+    color:var(--dim2);margin-bottom:4px;
   }
-  .row.me .who{color:rgba(140,232,255,.78)}
-  .row.ev .who{color:rgba(120,236,190,.78)}
-  .bub{
-    white-space:pre-wrap;word-break:break-word;
-    font-size:13.5px;line-height:1.72;color:#dbe9f2;
-  }
-  .row.me .bub{color:#b9d3e2}
+  .row.me .who{color:rgba(140,232,255,.72)}
+  .row.ev .who{color:rgba(120,236,190,.72)}
+  .bub{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.7;color:#d6e7f2}
+  .row.me .bub{color:#b3cfdf}
   .bub.live::after{content:"▍";margin-left:1px;color:var(--cy);animation:blink .9s steps(1) infinite}
-  /* 被用户打断的半句话：淡一点 + 标出来，别让它看起来像说完了 */
-  .bub.cut{opacity:.6}
+  .bub.cut{opacity:.55}
   .bub.cut::after{content:" ⌁ 打断";font:9px/1 var(--mono);letter-spacing:.16em;color:var(--amber)}
   @keyframes blink{50%{opacity:0}}
-  .row.sys{border-left-color:rgba(152,203,229,.14)}
-  .row.sys .bub{font:12px/1.6 var(--mono);letter-spacing:.02em;color:var(--dim)}
+  .row.sys .bub{font:11px/1.6 var(--mono);letter-spacing:.02em;color:var(--dim)}
 
-  /* ---------- 底栏 ---------- */
-  /* ---------- 底栏：只有一行状态 + 功能面板入口 ---------- */
+  /* ==================== 控制条 ==================== */
+  /* 一行：提示 + 四个常显控件 + 设置。常用的不藏，藏起来的一定是低频的 */
   footer{
-    grid-area:foot;border-top:1px solid var(--line2);
-    padding:0 14px;height:42px;position:relative;
-    background:linear-gradient(0deg,rgba(9,15,21,.94),rgba(5,8,11,.30));
-    display:flex;align-items:center;gap:10px;
+    position:relative;padding:6px 18px 16px;
+    display:flex;flex-direction:column;align-items:center;gap:9px;
   }
   footer::before{
-    content:"";position:absolute;left:0;right:0;top:-1px;height:1px;
-    background:linear-gradient(90deg,transparent 20%,rgba(127,227,255,.30) 50%,transparent 80%);
-    opacity:.5;
+    content:"";position:absolute;left:0;right:0;top:0;height:1px;
+    background:linear-gradient(90deg,transparent 12%,rgba(95,216,255,.26) 50%,transparent 88%);
   }
   #hint{
-    flex:1;min-width:0;font:12.5px/1.4 var(--sans);color:var(--dim);
-    text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font:12px/1.5 var(--sans);color:var(--dim);text-align:center;
+    max-width:min(720px,94%);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    min-height:18px;
   }
-  #toolsBtn{
-    flex:none;height:26px;padding:0 12px;background:transparent;
-    border:1px solid var(--line2);color:var(--dim);
-    font:11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
-    cursor:pointer;transition:.15s;
-  }
-  #toolsBtn:hover{border-color:rgba(127,227,255,.5);color:var(--ink-hi)}
-  #toolsBtn[aria-expanded="true"]{
-    border-color:rgba(127,227,255,.55);color:var(--cy);background:rgba(127,227,255,.07);
-  }
-  /* 功能面板：模式 / 输入 / 设备全收在这里，主界面只留球和一句话提示 */
-  #tools{
-    position:absolute;left:14px;right:14px;bottom:calc(100% + 8px);z-index:26;
-    background:rgba(6,11,15,.985);border:1px solid var(--line2);
-    padding:11px 12px 12px;display:none;
-    box-shadow:0 -14px 34px rgba(0,0,0,.55);
-  }
-  #tools.on{display:block}
-  .toolsRow{display:flex;align-items:center;gap:8px;margin-top:9px}
-  .toolsRow:first-child{margin-top:0}
-  .toolsRow > .k{flex:none;width:30px}
+  #dock{display:flex;align-items:center;gap:10px;position:relative;min-height:46px}
+
+  /* 说话：主 CTA。胶囊 + 一圈状态光环，按下时有内收感 */
   #mic{
-    flex:none;height:28px;min-width:88px;padding:0 12px;
-    background:rgba(127,227,255,.055);border:1px solid rgba(127,227,255,.32);
-    color:#bfe9f8;font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-    cursor:pointer;transition:.15s;
+    height:46px;min-width:132px;padding:0 30px;position:relative;
+    background:radial-gradient(ellipse at 50% 0%,rgba(95,216,255,.20),rgba(95,216,255,.05) 62%),rgba(6,12,17,.9);
+    border:1px solid rgba(95,216,255,.42);border-radius:23px;
+    color:#dcf4ff;font:600 13.5px/1 var(--sans);letter-spacing:.30em;
+    cursor:pointer;transition:.16s;
+    box-shadow:0 0 0 1px rgba(95,216,255,.06),0 0 26px rgba(95,216,255,.14),inset 0 0 22px rgba(95,216,255,.06);
   }
-  #mic:hover:not(:disabled){background:rgba(127,227,255,.14);border-color:rgba(127,227,255,.66);color:#fff}
-  #mic:disabled{cursor:not-allowed;opacity:.32}
-  #mic.rec{background:rgba(255,107,94,.13);border-color:rgba(255,107,94,.66);color:#ffd6d1}
-  #mic.think{background:rgba(167,139,250,.10);border-color:rgba(167,139,250,.50);color:#e3dcff}
-  #mic.speak{background:rgba(94,224,168,.10);border-color:rgba(94,224,168,.52);color:#c9fee9}
-  #phone{
-    flex:none;height:28px;padding:0 12px;
-    background:transparent;border:1px solid var(--line2);color:var(--dim);
-    font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
-    cursor:pointer;transition:.15s;
+  #mic:hover:not(:disabled){
+    border-color:rgba(95,216,255,.78);color:#fff;
+    box-shadow:0 0 0 1px rgba(95,216,255,.14),0 0 34px rgba(95,216,255,.30),inset 0 0 26px rgba(95,216,255,.10);
   }
-  #phone:hover{border-color:rgba(127,227,255,.5);color:var(--ink-hi)}
-  #phone.on{background:rgba(94,224,168,.10);border-color:rgba(94,224,168,.52);color:#c9fee9}
-  #typeIn{
-    flex:1;min-width:0;height:28px;padding:0 10px;
-    background:rgba(8,14,19,.85);border:1px solid var(--line2);
-    color:var(--ink);font:12.5px/1 var(--sans);outline:none;transition:.15s;
+  #mic:active:not(:disabled){transform:translateY(1px)}
+  #mic:disabled{cursor:not-allowed;opacity:.34;box-shadow:none}
+  #mic.rec{
+    background:radial-gradient(ellipse at 50% 0%,rgba(255,95,82,.24),rgba(255,95,82,.05) 62%),rgba(14,7,7,.9);
+    border-color:rgba(255,95,82,.72);color:#ffdcd8;
+    box-shadow:0 0 0 1px rgba(255,95,82,.12),0 0 30px rgba(255,95,82,.34);
   }
-  #typeIn::placeholder{color:rgba(206,224,236,.40)}
-  #typeIn:focus{border-color:rgba(127,227,255,.55);box-shadow:0 0 0 1px rgba(127,227,255,.12)}
-  #reset{
-    flex:none;height:28px;padding:0 8px;background:none;border:none;
+  #mic.think{
+    background:radial-gradient(ellipse at 50% 0%,rgba(157,140,255,.22),rgba(157,140,255,.05) 62%),rgba(9,8,16,.9);
+    border-color:rgba(157,140,255,.58);color:#e6e1ff;
+    box-shadow:0 0 0 1px rgba(157,140,255,.12),0 0 30px rgba(157,140,255,.28);
+  }
+  #mic.speak{
+    background:radial-gradient(ellipse at 50% 0%,rgba(79,224,176,.20),rgba(79,224,176,.05) 62%),rgba(6,14,12,.9);
+    border-color:rgba(79,224,176,.58);color:#cffdec;
+    box-shadow:0 0 0 1px rgba(79,224,176,.12),0 0 30px rgba(79,224,176,.26);
+  }
+
+  /* 次级控件：细边胶囊，字距收紧一档避免与主按钮打架 */
+  #phone,#typeToggle,#reset,#toolsBtn{
+    height:34px;flex:none;
+    background:transparent;border:1px solid var(--line2);border-radius:17px;
     color:var(--dim);font:10.5px/1 var(--mono);letter-spacing:.14em;
     text-transform:uppercase;cursor:pointer;transition:.15s;
   }
-  #reset:hover{color:var(--ink-hi)}
-  .devRow{display:none;gap:8px}
-  .devRow.on{display:flex}
+  #phone,#typeToggle,#reset{padding:0 14px}
+  #toolsBtn{width:34px;padding:0;font-size:13px;letter-spacing:0}
+  #phone:hover,#typeToggle:hover,#reset:hover,#toolsBtn:hover{
+    border-color:rgba(95,216,255,.52);color:var(--ink-hi);background:rgba(95,216,255,.05);
+  }
+  #phone.on{
+    border-color:rgba(79,224,176,.55);color:#bff8e5;background:rgba(79,224,176,.08);
+    box-shadow:0 0 16px rgba(79,224,176,.16);
+  }
+  #typeToggle[aria-expanded="true"],#toolsBtn[aria-expanded="true"]{
+    border-color:rgba(95,216,255,.55);color:var(--cy);background:rgba(95,216,255,.07);
+  }
+
+  /* 打字条：和按钮组「同一个位置两套内容」。
+     点「打字」→ 按钮让位给输入框：底栏高度不变（球不会缩），也不会有浮层压住对话。
+     前两版分别是"绝对定位弹出"（盖住最后一条对话）和"底栏长高"（球被挤小），都不如这个 */
+  #typeRow{
+    width:min(560px,94vw);display:none;gap:8px;align-items:center;
+  }
+  body.typing #dock > button{display:none}
+  body.typing #typeRow{display:flex}
+  #typeIn{
+    flex:1;min-width:0;height:42px;padding:0 14px;
+    background:rgba(8,14,19,.92);border:1px solid rgba(95,216,255,.34);border-radius:21px;
+    color:var(--ink);font:13px/1 var(--sans);outline:none;transition:.15s;
+  }
+  #typeIn::placeholder{color:rgba(186,214,232,.36)}
+  #typeIn:focus{border-color:rgba(95,216,255,.66);box-shadow:0 0 0 1px rgba(95,216,255,.12),0 0 22px rgba(95,216,255,.12)}
+  #typeCancel{
+    flex:none;height:34px;padding:0 14px;border-radius:17px;
+    background:transparent;border:1px solid var(--line2);color:var(--dim);
+    font:10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:pointer;
+  }
+  #typeCancel:hover{border-color:rgba(95,216,255,.5);color:var(--ink-hi)}
+
+  /* 设置抽屉：只装低频项（设备 / 诊断），从右下角升起 */
+  #tools{
+    position:absolute;right:18px;bottom:calc(100% + 14px);z-index:26;
+    width:min(360px,90vw);padding:12px 13px 13px;
+    background:#070d13;border:1px solid rgba(120,190,225,.30);
+    display:none;box-shadow:0 -16px 44px rgba(0,0,0,.78),0 0 0 1px rgba(95,216,255,.06);
+  }
+  #tools::before{
+    content:"settings";position:absolute;left:13px;top:-1px;transform:translateY(-100%);
+    font:8.5px/1 var(--mono);letter-spacing:.28em;text-transform:uppercase;
+    color:var(--amber);opacity:.7;background:#070d13;padding:3px 0;
+  }
+  #tools.on{display:block}
+  .toolsRow{display:flex;align-items:center;gap:8px}
+  .toolsRow > .k{flex:none;width:28px}
+  .devRow{display:flex}
   #dev{
-    flex:1;min-width:0;
-    background:rgba(8,14,19,.9);color:var(--ink);border:1px solid var(--line2);
-    font:11px/1.4 var(--mono);padding:3px 6px;outline:none;
+    flex:1;min-width:0;background:rgba(8,14,19,.92);color:var(--ink);
+    border:1px solid var(--line2);font:10.5px/1.5 var(--mono);padding:4px 6px;outline:none;
   }
-  #devRefresh{
+  #devRefresh,#diagToggle{
     flex:none;background:none;border:1px solid var(--line2);color:var(--dim);
-    font:10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
-    padding:4px 8px;cursor:pointer;
+    font:9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    padding:5px 9px;cursor:pointer;
   }
-  #devRefresh:hover{border-color:rgba(127,227,255,.45);color:var(--ink)}
+  #devRefresh:hover,#diagToggle:hover{border-color:rgba(95,216,255,.45);color:var(--ink)}
   #diag{
     display:none;margin-top:10px;
-    font:10.5px/1.6 var(--mono);color:rgba(206,224,236,.82);
-    background:rgba(4,8,11,.97);border:1px solid var(--line2);
+    font:10px/1.6 var(--mono);color:rgba(186,214,232,.80);
+    background:rgba(3,6,9,.97);border:1px solid var(--line2);
     padding:8px 10px;white-space:pre-wrap;word-break:break-all;
-    max-height:26vh;overflow:auto;
+    max-height:30vh;overflow:auto;
   }
   #diag.on{display:block}
 
-  /* ---------- 窄屏：侧栏收起，记录变回覆盖层 ---------- */
-  @media (max-width: 900px){
-    body{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "stage" "foot"}
-    #panelL{display:none}
-    #panelR{
-      position:fixed;left:0;right:0;bottom:0;top:auto;z-index:20;
-      max-height:64%;border-left:none;border-top:1px solid var(--line2);
-      background:rgba(4,8,11,.965);backdrop-filter:blur(12px);
-      opacity:0;transform:translateY(10px);pointer-events:none;
-      transition:opacity .2s,transform .24s cubic-bezier(.2,.7,.3,1);
-    }
-    body:not(.nolog) #panelR{opacity:1;transform:none;pointer-events:auto}
-    body.nolog #panelR{opacity:0;pointer-events:none}
-    #orb{width:min(300px,42vh)}
+  /* ==================== 窄屏 ==================== */
+  /* 手机：球吃满宽度，遥测块让位（信息在顶栏还有一份） */
+  @media (max-width: 860px){
+    body{grid-template-rows:42px minmax(0,1fr) auto}
+    .hud,.gauge{display:none}
+    #orb{height:min(58vh,82vw,420px)}
+    #waveWrap{width:92%}
+    #logWrap{max-height:26vh}
+    #hint{font-size:11.5px}
   }
-  /* 宽屏：记录面板常显，开关只管收起整列 */
-  @media (min-width: 901px){
-    body.nolog{grid-template-columns:214px minmax(0,1fr) 0}
-    body.nolog #panelR{opacity:0;pointer-events:none}
+  @media (max-width: 520px){
+    header{gap:9px;padding:0 12px}
+    header h1{font-size:12px;letter-spacing:.44em}
+    header h1 small{display:none}
+    #health{display:none}
+    #stateLbl{min-width:0}
+    #buildStamp{display:none}
+    #orb{height:min(56vh,84vw)}
+    footer{padding:4px 12px 12px;gap:6px}
+    #hint{white-space:normal;font-size:11px;line-height:1.5;text-align:center}
+    #dock{gap:6px}
+    #mic{min-width:100px;padding:0 18px;height:42px;font-size:12px;letter-spacing:.18em}
+    #phone,#typeToggle,#reset{padding:0 9px;font-size:9.5px;letter-spacing:.04em;height:32px}
+    #toolsBtn{width:32px;height:32px}
+    #logWrap{max-height:24vh}
+    .bub{font-size:12.5px}
   }
   @media (prefers-reduced-motion: reduce){
-    #dot.on,#dot.rec,#dot.think,#dot.speak{animation:none}
-    .bub.live::after{animation:none}
+    #dot.on,#dot.rec,#dot.think,#dot.speak,.bub.live::after{animation:none}
+    #logWrap,#typeRow{transition:none}
   }
-
 </style>
 </head>
 <body>
@@ -374,66 +465,78 @@
   <span id="buildStamp" title="点一下看诊断信息">__BUILD__</span>
 </header>
 
-<aside id="panelL">
-  <div>
-    <div class="sec">telemetry</div>
-    <div class="ro"><span class="k">State</span><span class="v cy" id="tState">idle</span></div>
-    <div class="ro"><span class="k">Input</span><span class="v" id="tDev">—</span></div>
-    <div class="ro"><span class="k">Level</span><span class="v" id="tLevel">0%</span></div>
-    <div id="tLevelBar"><i></i></div>
-    <div class="ro"><span class="k">Vad</span><span class="v" id="tVad">offline</span></div>
-    <div class="ro"><span class="k">Session</span><span class="v" id="tClock">00:00</span></div>
-  </div>
-  <div>
-    <div class="sec">channel</div>
-    <div class="ro"><span class="k">Stt</span><span class="v dim">whisper</span></div>
-    <div class="ro"><span class="k">Llm</span><span class="v dim">qwen3.5·4b</span></div>
-    <div class="ro"><span class="k">Tts</span><span class="v dim">edge</span></div>
-    <div class="ro"><span class="k">Mode</span><span class="v" id="tMode">half-duplex</span></div>
-  </div>
-  <div class="spacer"></div>
-  <div>
-    <div class="sec">signal</div>
-    <div class="rule"></div>
-  </div>
-</aside>
-
 <main id="stage">
   <span class="brk a" aria-hidden="true"></span>
   <span class="brk b" aria-hidden="true"></span>
-  <canvas id="orb" role="button" tabindex="0" aria-label="开始或结束说话"></canvas>
-  <div id="recTimer" aria-live="polite"></div>
-  <div id="meter"><div id="meterFill"></div></div>
-  <div id="devInfo"></div>
+  <span class="brk c" aria-hidden="true"></span>
+  <span class="brk d" aria-hidden="true"></span>
+  <span class="gauge gL" aria-hidden="true"></span>
+  <span class="gauge gR" aria-hidden="true"></span>
+
+  <!-- 遥测：贴在舞台四角，不占列 -->
+  <div class="hud" id="teleL" aria-hidden="true">
+    <div class="hudT">telemetry</div>
+    <div class="ro"><span class="k">state</span><span class="v cy" id="tState">idle</span></div>
+    <div class="ro"><span class="k">input</span><span class="v" id="tDev">—</span></div>
+    <div class="ro"><span class="k">level</span><span class="v" id="tLevel">0%</span></div>
+    <div id="tLevelBar"><i></i></div>
+    <div class="ro"><span class="k">vad</span><span class="v" id="tVad">offline</span></div>
+  </div>
+  <div class="hud" id="teleR" aria-hidden="true">
+    <div class="hudT">channel</div>
+    <div class="ro"><span class="k">session</span><span class="v" id="tClock">00:00</span></div>
+    <div class="ro"><span class="k">mode</span><span class="v" id="tMode">half-duplex</span></div>
+    <div class="ro"><span class="k">stt</span><span class="v dim">whisper</span></div>
+    <div class="ro"><span class="k">llm</span><span class="v dim">qwen3.5·4b</span></div>
+    <div class="ro"><span class="k">tts</span><span class="v dim">qwen3·0.6b</span></div>
+  </div>
+
+  <div id="orbStage">
+    <canvas id="orb" role="button" tabindex="0" aria-label="开始或结束说话"></canvas>
+  </div>
+  <div id="orbInfo">
+    <div id="recTimer" aria-live="polite"></div>
+    <div id="meter"><div id="meterFill"></div></div>
+    <div id="devInfo"></div>
+  </div>
+
   <div id="waveWrap">
     <canvas id="wave" aria-hidden="true"></canvas>
     <div class="ruler" aria-hidden="true"></div>
   </div>
-</main>
 
-<aside id="panelR">
-  <div class="sec">transcript</div>
-  <div id="log" aria-hidden="true"></div>
-</aside>
+  <section id="logWrap">
+    <div class="sec">transcript</div>
+    <div id="log" aria-hidden="true"></div>
+  </section>
+</main>
 
 <footer>
   <div id="hint">点球说话，说完再点一下发送；她说的时候点球可以打断</div>
-  <button id="toolsBtn" aria-expanded="false" aria-controls="tools">功能</button>
-  <div id="tools" aria-hidden="true">
-    <div class="toolsRow">
-      <span class="k">模式</span>
-      <button id="mic" disabled>准备中</button>
-      <button id="phone" title="电话模式：不用按键，停顿自动接话">电话</button>
-    </div>
-    <div class="toolsRow">
-      <span class="k">输入</span>
+
+  <div id="dock">
+    <button id="mic" disabled>准备中</button>
+    <button id="phone" title="电话模式：不用按键，停顿自动接话">电话</button>
+    <button id="typeToggle" aria-expanded="false" title="打字输入">打字</button>
+    <button id="reset" title="清空上下文">清空</button>
+    <button id="toolsBtn" aria-expanded="false" aria-controls="tools" title="设置">⚙</button>
+
+    <!-- 打字态：这一组和上面的按钮互斥显示，占同一个位置 -->
+    <div id="typeRow" aria-hidden="true">
       <input id="typeIn" placeholder="打字也行，回车发送" autocomplete="off">
-      <button id="reset">清空</button>
+      <button id="typeCancel">取消</button>
     </div>
+  </div>
+
+  <div id="tools" aria-hidden="true">
     <div class="toolsRow devRow">
       <span class="k">设备</span>
       <select id="dev" title="选择输入设备"></select>
       <button id="devRefresh" title="授权并刷新设备名">刷新</button>
+    </div>
+    <div class="toolsRow">
+      <span class="k">排查</span>
+      <button id="diagToggle" title="打开 / 收起运行时诊断">诊断信息</button>
     </div>
     <pre id="diag"></pre>
   </div>
@@ -464,6 +567,8 @@ const diagEl = document.getElementById('diag');
 const buildStamp = document.getElementById('buildStamp');
 const toolsEl = document.getElementById('tools');
 const toolsBtn = document.getElementById('toolsBtn');
+const typeToggle = document.getElementById('typeToggle');
+const typeRow = document.getElementById('typeRow');
 
 const octx = orb.getContext('2d');
 const wctx = wave.getContext('2d');
@@ -765,7 +870,7 @@ function drawOrb(now, amp) {
   octx.clearRect(0, 0, w, h);
 
   const t = REDUCED ? now * 0.16 : now;          // 减少动效时几乎静止
-  const base = Math.min(w, h) * 0.225;
+  const base = Math.min(w, h) * 0.265;
   const breathe = 0.014 * Math.sin(t * 1.1);
   const kick = state === 'idle' ? 0 : amp * 0.12;
   const R = base * (1 + breathe + kick);
@@ -773,100 +878,93 @@ function drawOrb(now, amp) {
 
   const spec = spectrum();
 
-  // ---------------- 1) 外刻度盘（罗盘感）----------------
-  const dialR = R * 1.66;
-  for (let i = 0; i < 120; i++) {
-    const a = (i / 120) * Math.PI * 2 - Math.PI / 2 + t * 0.045;
-    const major = i % 10 === 0;
-    const len = major ? R * 0.085 : R * 0.038;
+  // ================= 环层：只有 4 层，间距拉开 =================
+  // 上一版把 5 层环全挤在 1.12R~1.66R，屏幕上一堆虚线，看起来像脏了。
+  // 现在每层之间至少留 0.15R 的空隙，一眼能数清有几层 —— 这是"精密"的来源。
+
+  // 1) 最外：刻度盘。只做刻度，不做圆周线，避免又一根实线
+  const dialR = R * 1.70;
+  for (let i = 0; i < 96; i++) {
+    const a = (i / 96) * Math.PI * 2 - Math.PI / 2 + t * 0.035;
+    const major = i % 12 === 0;
+    const len = major ? R * 0.075 : R * 0.032;
     octx.beginPath();
-    octx.strokeStyle = hsla(col.h, col.s, col.l + 12, major ? 0.55 : 0.14);
-    octx.lineWidth = major ? 1.4 : 1;
+    octx.strokeStyle = hsla(col.h, col.s, col.l + 14, major ? 0.62 : 0.15);
+    octx.lineWidth = major ? 1.3 : 1;
     octx.moveTo(cx + Math.cos(a) * (dialR - len), cy + Math.sin(a) * (dialR - len));
     octx.lineTo(cx + Math.cos(a) * dialR, cy + Math.sin(a) * dialR);
     octx.stroke();
   }
 
-  // ---------------- 2) 细环 + 反向旋转虚线环 ----------------
+  // 2) 轨道弧：两段长弧反向旋转，是「它在运转」的主要动感来源。
+  //    必须给够线宽和长度 —— 1px + 短弧在暗底上读起来像一道划痕，不像轨道
   octx.globalCompositeOperation = 'lighter';
+  for (let k = 0; k < 2; k++) {
+    const dir = k ? -1 : 1;
+    const a0 = dir * t * (0.18 + k * 0.10) + (k ? Math.PI * 0.85 : 0);
+    octx.beginPath();
+    octx.strokeStyle = hsla(col.h, col.s - 6, col.l + 12, 0.16 + 0.06 * Math.sin(t * 0.8 + k * 2));
+    octx.lineWidth = k ? 1.6 : 2.6;
+    octx.arc(cx, cy, R * 1.50, a0, a0 + 1.62);
+    octx.stroke();
+  }
 
-  octx.beginPath();
-  octx.strokeStyle = hsla(col.h, col.s, col.l, 0.14);
-  octx.lineWidth = 1;
-  octx.arc(cx, cy, R * 1.54, 0, Math.PI * 2);
-  octx.stroke();
-
+  // 3) 虚线环：唯一一条虚线，慢速反向 —— 再多的虚线就成噪点了
   octx.save();
   octx.translate(cx, cy);
-  octx.rotate(-t * 0.12);
+  octx.rotate(-t * 0.09);
   octx.beginPath();
-  octx.setLineDash([2, 9]);
-  octx.strokeStyle = hsla(col.h, col.s, col.l + 6, 0.34);
+  octx.setLineDash([1.5, 11]);
+  octx.strokeStyle = hsla(col.h, col.s, col.l + 8, 0.30);
   octx.lineWidth = 1;
-  octx.arc(0, 0, R * 1.40, 0, Math.PI * 2);
+  octx.arc(0, 0, R * 1.36, 0, Math.PI * 2);
   octx.stroke();
   octx.setLineDash([]);
   octx.restore();
 
-  // ---------------- 3) HUD 弧段（3 组，缺口错开）----------------
-  const groups = state === 'thinking' ? 4 : 3;
-  for (let k = 0; k < groups; k++) {
-    const a0 = t * (0.42 + k * 0.16) + k * (Math.PI * 2 / groups);
-    const span = 0.62 - k * 0.06;
-    octx.beginPath();
-    octx.strokeStyle = hsla(col.h, col.s + 6, col.l + 14, 0.30 + 0.14 * Math.sin(t + k));
-    octx.lineWidth = k === 0 ? 2.2 : 1.4;
-    octx.arc(cx, cy, R * (1.28 + k * 0.065), a0, a0 + span);
-    octx.stroke();
-  }
-
-  // ---------------- 4) 频谱环（64 段，随声音起伏）----------------
-  const SEG = 64;
+  // 4) 声纹环：贴着球，短而密，随声音起伏 —— 它是「活的」，别的环都是死刻度
+  const SEG = 72;
   for (let i = 0; i < SEG; i++) {
-    const a = (i / SEG) * Math.PI * 2 - Math.PI / 2 + t * 0.16;
+    const a = (i / SEG) * Math.PI * 2 - Math.PI / 2 + t * 0.10;
     let v;
     if (spec) {
-      const pos = Math.pow(i / SEG, 1.5);
-      const bin = Math.min(spec.length - 1, Math.floor(pos * spec.length * 0.6));
+      const pos = Math.pow(i / SEG, 1.6);
+      const bin = Math.min(spec.length - 1, Math.floor(pos * spec.length * 0.55));
       v = spec[bin] / 255;
     } else {
-      v = 0.16 + 0.12 * Math.sin(i * 0.45 + t * 2.0);   // 无音频时的巡游波
+      v = 0.10 + 0.08 * Math.sin(i * 0.5 + t * 1.6);   // 无声时的巡游波
     }
-    const len = R * (0.035 + v * 0.20);
-    const r1 = R * 1.12;
+    const len = R * (0.018 + v * 0.13);
+    const r1 = R * 1.06;
     octx.beginPath();
-    octx.strokeStyle = hsla(col.h, col.s, col.l + 16, 0.22 + v * 0.68);
-    octx.lineWidth = 2;
+    octx.strokeStyle = hsla(col.h, col.s, col.l + 18, 0.16 + v * 0.70);
+    octx.lineWidth = 1.6;
     octx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
     octx.lineTo(cx + Math.cos(a) * (r1 + len), cy + Math.sin(a) * (r1 + len));
     octx.stroke();
   }
 
-  // ---------------- 5) 粒子（贴着核心外层）----------------
-  const N = 64;
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2 + t * 0.22;
-    const wob = Math.sin(i * 0.8 + t * 1.9) * 0.012
-              + amp * 0.05 * Math.sin(i * 1.7 + t * 6);
-    const rr = R * (1.0 + wob);
-    const sz = 0.9 + amp * 1.6 * (0.5 + 0.5 * Math.sin(i * 0.9 + t * 5));
+  // 5) 轨道粒子：只在 1.20R 这一条线上，稀疏 —— 撒多了像灰
+  for (let i = 0; i < 3; i++) {
+    const a = t * (0.16 + i * 0.06) + i * 2.1;
+    const rr = R * 1.20;
     octx.beginPath();
-    octx.fillStyle = hsla(col.h, col.s, col.l + 24, 0.35 + amp * 0.45);
-    octx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, sz, 0, Math.PI * 2);
+    octx.fillStyle = hsla(col.h, 60, 92, 0.45 + amp * 0.35);
+    octx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.94, 1.2, 0, Math.PI * 2);
     octx.fill();
   }
 
-  // ---------------- 6) 波纹 ----------------
+  // 6) 波纹：从球的边缘扩散出去
   if (!REDUCED && ((state === 'recording' && amp > 0.22) ||
-                   (state === 'speaking' && Math.random() < 0.22))) {
-    ripples.push({ r: R * 1.14, a: state === 'recording' ? 0.26 : 0.18 });
+                   (state === 'speaking' && Math.random() < 0.18))) {
+    ripples.push({ r: R * 1.05, a: state === 'recording' ? 0.22 : 0.15 });
   }
   ripples = ripples.filter(rp => rp.a > 0.012);
   for (const rp of ripples) {
-    rp.r += 1.5;
-    rp.a *= 0.965;
+    rp.r += 1.4;
+    rp.a *= 0.968;
     octx.beginPath();
-    octx.strokeStyle = hsla(col.h, col.s, col.l + 8, rp.a);
+    octx.strokeStyle = hsla(col.h, col.s, col.l + 10, rp.a);
     octx.lineWidth = 1;
     octx.arc(cx, cy, rp.r, 0, Math.PI * 2);
     octx.stroke();
@@ -874,134 +972,125 @@ function drawOrb(now, amp) {
 
   octx.globalCompositeOperation = 'source-over';
 
-  // ---------------- 7) 核心：暗底 + 自发光（弧反应堆）----------------
-  // 7a) 球体本色：高饱和青，从瓷白一路压到深青黑。
-  //     这层是"球"，不是"雾"—— 饱和度给足，边缘压暗，中间才不会灰成塑料
+  // ================= 球体 =================
+  // 7) 球本色：高饱和青，从白热一路压到深青。中间必须够亮，边缘必须够暗
   const bodyGrad = octx.createRadialGradient(
-    cx - R * 0.10, cy - R * 0.12, 0, cx, cy, R);
-  bodyGrad.addColorStop(0.00, hsla(col.h, 100, 84, 0.97));
-  bodyGrad.addColorStop(0.18, hsla(col.h, 100, 74, 0.95));
-  bodyGrad.addColorStop(0.42, hsla(col.h, 100, 58, 0.93));
-  bodyGrad.addColorStop(0.68, hsla(col.h + 2, 98, 38, 0.90));
-  bodyGrad.addColorStop(0.88, hsla(col.h + 4, 96, 24, 0.82));
-  bodyGrad.addColorStop(1.00, hsla(col.h + 6, 96, 16, 0.66));
+    cx - R * 0.12, cy - R * 0.14, 0, cx, cy, R);
+  bodyGrad.addColorStop(0.00, hsla(col.h, 100, 92, 0.98));
+  bodyGrad.addColorStop(0.16, hsla(col.h, 100, 80, 0.96));
+  bodyGrad.addColorStop(0.38, hsla(col.h, 100, 62, 0.94));
+  bodyGrad.addColorStop(0.62, hsla(col.h + 2, 98, 42, 0.92));
+  bodyGrad.addColorStop(0.84, hsla(col.h + 4, 96, 26, 0.88));
+  bodyGrad.addColorStop(1.00, hsla(col.h + 6, 96, 18, 0.80));
   octx.beginPath();
   octx.fillStyle = bodyGrad;
   octx.arc(cx, cy, R, 0, Math.PI * 2);
   octx.fill();
 
-  // ---------------- 8) 球内结构（裁剪在球内，画在光的下层）----------------
+  // 7b) 边缘衰减：球体感 = 中心亮、边缘暗。
+  //     上一版这道渐变起手太猛（0.55 就给 0.12 黑），画出一圈脏黑的"轮胎"；
+  //     现在改成贴边才压下去，过渡全在中后段
+  const limb = octx.createRadialGradient(cx, cy, R * 0.52, cx, cy, R);
+  limb.addColorStop(0.00, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.55, hsla(col.h, 92, 4, 0.06));
+  limb.addColorStop(0.85, hsla(col.h, 92, 3, 0.30));
+  limb.addColorStop(1.00, hsla(col.h, 92, 2, 0.64));
+  octx.beginPath();
+  octx.fillStyle = limb;
+  octx.arc(cx, cy, R, 0, Math.PI * 2);
+  octx.fill();
+
+  // 8) 球内结构：只留「一条赤道弧 + 一条内环 + 一道扫描线」。
+  //    上一版画了 3 条经线 + 3 条纬线，远看像沙滩球/西瓜纹 —— 全删
   octx.save();
   octx.beginPath();
   octx.arc(cx, cy, R - 0.5, 0, Math.PI * 2);
   octx.clip();
 
-  // 8a) 经纬网 —— 绕竖轴自转的线框球
-  const spin = t * 0.45;
-  for (let m = 0; m < 3; m++) {
-    const rx = Math.abs(Math.cos(spin + m * Math.PI / 3)) * R * 0.86;
-    if (rx < 2) continue;
-    octx.beginPath();
-    octx.strokeStyle = hsla(col.h, 90, 78, 0.18);
-    octx.lineWidth = 1;
-    octx.ellipse(cx, cy, rx, R * 0.86, 0, 0, Math.PI * 2);
-    octx.stroke();
-  }
-  for (const fy of [-0.45, 0, 0.45]) {
-    const wr = R * 0.86 * Math.cos(Math.asin(fy));
-    octx.beginPath();
-    octx.strokeStyle = hsla(col.h, 90, 78, 0.13);
-    octx.lineWidth = 1;
-    octx.ellipse(cx, cy + R * 0.86 * fy, wr, wr * 0.22, 0, 0, Math.PI * 2);
-    octx.stroke();
-  }
-
-  // 8b) 内部慢转虚线环
+  // 8a) 一条会转的赤道弧（用椭圆模拟球面，不用整颗球画网）
   octx.save();
   octx.translate(cx, cy);
-  octx.rotate(t * 0.28);
+  octx.rotate(-0.28);
+  for (let m = 0; m < 2; m++) {
+    const ry = R * (0.30 + m * 0.34);
+    octx.beginPath();
+    octx.strokeStyle = hsla(col.h, 96, 86, 0.10 + m * 0.04);
+    octx.lineWidth = 1;
+    octx.ellipse(0, 0, R * 0.96, ry, 0, 0, Math.PI * 2);
+    octx.stroke();
+  }
+  octx.restore();
+
+  // 8b) 内环：虚线，慢慢转
+  octx.save();
+  octx.translate(cx, cy);
+  octx.rotate(t * 0.30);
   octx.beginPath();
-  octx.setLineDash([1.5, 6]);
-  octx.strokeStyle = hsla(col.h, 95, 82, 0.24);
+  octx.setLineDash([1.5, 7]);
+  octx.strokeStyle = hsla(col.h, 95, 88, 0.18);
   octx.lineWidth = 1;
-  octx.arc(0, 0, R * 0.55, 0, Math.PI * 2);
+  octx.arc(0, 0, R * 0.46, 0, Math.PI * 2);
   octx.stroke();
   octx.setLineDash([]);
   octx.restore();
 
-  // 8c) 漂浮节点
-  for (let i = 0; i < 5; i++) {
-    const a = t * (0.18 + i * 0.05) + i * 2.4;
-    const rr = R * (0.35 + 0.28 * Math.sin(i * 1.7 + t * 0.4));
-    octx.beginPath();
-    octx.fillStyle = hsla(col.h, 40, 96, 0.55 + amp * 0.30);
-    octx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.9, 1.3, 0, Math.PI * 2);
-    octx.fill();
-  }
-
-  // 8d) 扫描线
-  const sy = cy - R + (((t * 0.22) % 1) * 2 * R);
-  const sg = octx.createLinearGradient(0, sy - 16, 0, sy + 16);
-  sg.addColorStop(0, hsla(col.h, 60, 92, 0));
-  sg.addColorStop(0.5, hsla(col.h, 60, 92, 0.14 + amp * 0.16));
-  sg.addColorStop(1, hsla(col.h, 60, 92, 0));
+  // 8c) 扫描线：上下扫过球面，HUD 味的来源
+  const sy = cy - R + (((t * 0.20) % 1) * 2 * R);
+  const sg = octx.createLinearGradient(0, sy - 18, 0, sy + 18);
+  sg.addColorStop(0, hsla(col.h, 60, 94, 0));
+  sg.addColorStop(0.5, hsla(col.h, 60, 94, 0.10 + amp * 0.14));
+  sg.addColorStop(1, hsla(col.h, 60, 94, 0));
   octx.fillStyle = sg;
-  octx.fillRect(cx - R, sy - 16, 2 * R, 32);
+  octx.fillRect(cx - R, sy - 18, 2 * R, 36);
   octx.restore();   // 解除球内裁剪
 
-  // ---------------- 9) 叠光：白热芯 + 外扩辉光 ----------------
-  // 顺序很重要：先有"球体本色"（source-over），再往上加光（lighter）。
-  // 反过来先加光再铺色，光会被颜色盖掉，就成了塑料球
+  // 9) 叠光：白热芯 + 外扩辉光（必须画在球色之后，否则光被颜色盖掉）
   octx.globalCompositeOperation = 'lighter';
 
   const coreGrad = octx.createRadialGradient(
-    cx - R * 0.05, cy - R * 0.06, 0, cx - R * 0.05, cy - R * 0.06, R * 0.46);
-  coreGrad.addColorStop(0.00, hsla(col.h, 30, 100, 0.42 + amp * 0.16));
-  coreGrad.addColorStop(0.32, hsla(col.h, 80, 94, 0.16));
-  coreGrad.addColorStop(1.00, hsla(col.h, 80, 94, 0));
+    cx - R * 0.06, cy - R * 0.08, 0, cx - R * 0.06, cy - R * 0.08, R * 0.52);
+  coreGrad.addColorStop(0.00, hsla(col.h, 16, 100, 0.46 + amp * 0.16));
+  coreGrad.addColorStop(0.22, hsla(col.h, 70, 96, 0.22));
+  coreGrad.addColorStop(0.60, hsla(col.h, 85, 90, 0.06));
+  coreGrad.addColorStop(1.00, hsla(col.h, 85, 90, 0));
   octx.beginPath();
   octx.fillStyle = coreGrad;
-  octx.arc(cx - R * 0.05, cy - R * 0.06, R * 0.46, 0, Math.PI * 2);
+  octx.arc(cx - R * 0.06, cy - R * 0.08, R * 0.52, 0, Math.PI * 2);
   octx.fill();
 
-  const halo = octx.createRadialGradient(cx, cy, R * 0.96, cx, cy, R * 1.42);
-  halo.addColorStop(0.00, hsla(col.h, 100, 62, 0.13 + amp * 0.10));
-  halo.addColorStop(0.45, hsla(col.h, 100, 56, 0.045));
+  const halo = octx.createRadialGradient(cx, cy, R * 0.98, cx, cy, R * 1.34);
+  halo.addColorStop(0.00, hsla(col.h, 100, 62, 0.12 + amp * 0.10));
+  halo.addColorStop(0.40, hsla(col.h, 100, 56, 0.035));
   halo.addColorStop(1.00, hsla(col.h, 100, 50, 0));
   octx.beginPath();
   octx.fillStyle = halo;
-  octx.arc(cx, cy, R * 1.42, 0, Math.PI * 2);
+  octx.arc(cx, cy, R * 1.34, 0, Math.PI * 2);
   octx.fill();
 
   octx.globalCompositeOperation = 'source-over';
 
-  // ---------------- 10) 边缘：亮环 + 内暗线，做出"壳" ----------------
+  // 10) 边缘：一道亮环。球再暗，这道环也必须是全场最锐的线
   octx.beginPath();
-  octx.strokeStyle = hsla(col.h, 100, 88, 0.52 + 0.34 * hot);
-  octx.lineWidth = 1.2;
+  octx.strokeStyle = hsla(col.h, 100, 90, 0.60 + 0.30 * hot);
+  octx.lineWidth = 1.3;
   octx.arc(cx, cy, R, 0, Math.PI * 2);
   octx.stroke();
-  octx.beginPath();
-  octx.strokeStyle = hsla(col.h + 4, 90, 14, 0.50);
-  octx.lineWidth = 1;
-  octx.arc(cx, cy, R - 2.5, 0, Math.PI * 2);
-  octx.stroke();
 
-  // 11) 反应堆内环 + 辐条
+  // 11) 内环 + 辐条：反应堆的"炉心"
   const innerPulse = 0.5 + 0.5 * Math.sin(t * 1.6);
   octx.beginPath();
-  octx.strokeStyle = hsla(col.h, col.s - 8, 82, 0.16 + innerPulse * 0.14);
-  octx.lineWidth = 1.1;
-  octx.arc(cx, cy, R * 0.30, 0, Math.PI * 2);
+  octx.strokeStyle = hsla(col.h, col.s - 10, 92, 0.14 + innerPulse * 0.12);
+  octx.lineWidth = 1;
+  octx.arc(cx, cy, R * 0.24, 0, Math.PI * 2);
   octx.stroke();
 
   for (let k = 0; k < 3; k++) {
     const a = t * 0.5 + (k * Math.PI * 2) / 3;
     octx.beginPath();
-    octx.strokeStyle = hsla(col.h, col.s, 80, 0.10 + amp * 0.20);
+    octx.strokeStyle = hsla(col.h, col.s, 90, 0.08 + amp * 0.18);
     octx.lineWidth = 1;
-    octx.moveTo(cx + Math.cos(a) * R * 0.16, cy + Math.sin(a) * R * 0.16);
-    octx.lineTo(cx + Math.cos(a) * R * 0.28, cy + Math.sin(a) * R * 0.28);
+    octx.moveTo(cx + Math.cos(a) * R * 0.13, cy + Math.sin(a) * R * 0.13);
+    octx.lineTo(cx + Math.cos(a) * R * 0.23, cy + Math.sin(a) * R * 0.23);
     octx.stroke();
   }
 }
@@ -1198,7 +1287,10 @@ function addRow(who, text, cls, live, before) {
   // 用户那行后到，必须插到它前面，否则对话顺序会变成「答在上、问在下」。
   if (before && before.parentNode === logEl) logEl.insertBefore(row, before);
   else logEl.appendChild(row);
+  // 滚到底要滚两次：同步这一次用的是插入前的高度，下一帧才是最终高度。
+  // 只写同步那一行时，最后一条消息会卡在可视区外面 —— 表现为"新消息看不见"
   logEl.scrollTop = logEl.scrollHeight;
+  requestAnimationFrame(() => { logEl.scrollTop = logEl.scrollHeight; });
   // 记录隐藏时，非系统消息计入未读角标
   if (!logOpen && cls !== 'sys') {
     unread += 1;
@@ -1215,8 +1307,10 @@ async function checkHealth() {
     const d = await r.json();
     const line = (label, o) =>
       '<span class="' + (o.ok ? 'good' : 'bad') + '">' + label + ' ' + (o.ok ? 'OK' : '×') + '</span>';
-    health.innerHTML = [line('STT', d.stt), line('LLM', d.llm), line('TTS', d.tts)].join('　')
-      + '<br><span style="font-size:11px">' + d.llm.base + '</span>';
+    // 顶栏只放三个灯。原来第二行还挂了 base URL（http://127.0.0.1:8090/v1），
+    // 一条长串贴在右上角既不好看也没用 —— 挪进 diag 面板，想看按版本号
+    health.innerHTML = [line('STT', d.stt), line('LLM', d.llm), line('TTS', d.tts)].join(' <i>/</i> ');
+    health.title = 'LLM base: ' + (d.llm.base || '?');
 
     const allOk = d.stt.ok && d.llm.ok;
     if (allOk) {
@@ -1651,13 +1745,31 @@ function setLogOpen(open) {
 
 logToggle.onclick = () => setLogOpen(!logOpen);
 
-// 功能面板：模式 / 输入 / 设备都收在这里，主界面只留球和一句提示
+// 设置抽屉：只装低频项（设备 / 诊断）。常用控件（说话/电话/打字/清空）常驻底栏，不藏。
+// 和打字条互斥 —— 两个浮层同时开着会重叠，这是上一版最容易犯的错。
 function setToolsOpen(open) {
   toolsEl.classList.toggle('on', open);
   toolsEl.setAttribute('aria-hidden', String(!open));
   toolsBtn.setAttribute('aria-expanded', String(open));
+  if (open) setTypeOpen(false);
 }
 toolsBtn.onclick = () => setToolsOpen(!toolsEl.classList.contains('on'));
+
+// 打字态：按钮组 ↔ 输入框，同一个位置互相顶替（body.typing 控制）
+function setTypeOpen(open) {
+  document.body.classList.toggle('typing', open);
+  typeRow.setAttribute('aria-hidden', String(!open));
+  typeToggle.setAttribute('aria-expanded', String(open));
+  if (open) {
+    setToolsOpen(false);
+    // 等一帧再 focus，否则 iOS 上键盘弹出会把布局顶歪
+    setTimeout(() => { try { typeIn.focus(); } catch (e) {} }, 30);
+  } else {
+    typeIn.blur();
+  }
+}
+typeToggle.onclick = () => setTypeOpen(!document.body.classList.contains('typing'));
+document.getElementById('typeCancel').onclick = () => setTypeOpen(false);
 
 // ==================== 事件 ====================
 function onTap() {
@@ -1676,13 +1788,18 @@ document.getElementById('reset').onclick = async () => {
 };
 
 typeIn.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.isComposing) { sendText(typeIn.value); typeIn.value = ''; }
+  if (e.key === 'Enter' && !e.isComposing) {
+    sendText(typeIn.value); typeIn.value = '';
+    if (!phoneOn) setTypeOpen(false);      // 发完就收，别让输入行一直悬着挡球
+  }
 });
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (toolsEl.classList.contains('on')) setToolsOpen(false);
-  else if (logOpen) setLogOpen(false);
+  // 分层关闭：先收浮层，再收记录 —— 一次 Esc 只退一层，符合直觉
+  if (document.body.classList.contains('typing')) { setTypeOpen(false); return; }
+  if (toolsEl.classList.contains('on')) { setToolsOpen(false); return; }
+  if (logOpen) setLogOpen(false);
 });
 
 // 球体本身可聚焦，键盘也能开始/结束说话
@@ -1699,6 +1816,7 @@ document.addEventListener('pointerdown', () => {
 }, true);
 
 buildStamp.onclick = () => diagEl.classList.toggle('on');
+document.getElementById('diagToggle').onclick = () => diagEl.classList.toggle('on');
 
 if (!hasMic) {
   mic.textContent = '无麦克风';
@@ -1723,5 +1841,7 @@ setInterval(() => { if (state === 'idle') checkHealth(); }, 8000);
 setLogOpen(window.innerWidth > 900);
 window.addEventListener('resize', () => { /* 尺寸在 draw 里自适应 */ paintTelemetry(); });
 </script>
+
+
 </body>
 </html>
