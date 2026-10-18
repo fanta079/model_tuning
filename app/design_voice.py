@@ -22,7 +22,8 @@ VoiceDesign 只有 1.7B 版本。它**只在"造音色"这一下用**，跑完�
 ----
     python app/design_voice.py --dry-run          # 先看 8 条描述词，不加载模型、不花钱
     python app/design_voice.py                    # 全跑（首次会下载 ~4.5GB 权重）
-    python app/design_voice.py --only 1,3,4       # 只跑几条
+    python app/design_voice.py --only 1,3,4       # 只跑【候选编号】1/3/4（不是第1~3条）
+    python app/design_voice.py --only 1 --tag v2  # 重跑同一编号但不覆盖上次（存到 v2/ 子目录）
     python app/design_voice.py --device cpu       # 没显卡（1.7B 在 CPU 上很慢，仅应急）
     python app/design_voice.py --lock 3           # 把第 3 条锁定成 E.V. 的音色
 
@@ -51,7 +52,8 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-OUT = os.path.join(HERE, "voice_samples", "design")
+BASE_OUT = os.path.join(HERE, "voice_samples", "design")
+OUT = BASE_OUT                      # 实际输出目录，--tag 会改成 BASE_OUT/<tag>
 LOCK_DIR = os.path.join(HERE, "voice_lock")
 VOICE_JSON = os.path.join(HERE, "voice.json")
 
@@ -207,14 +209,18 @@ def generate(model, items, text_override):
     return wavs, sr
 
 
-def write_outputs(items, wavs, sr, text_override, meta):
+def write_outputs(items, wavs, sr, text_override, meta, out_dir=None):
     import soundfile as sf
 
-    os.makedirs(OUT, exist_ok=True)
+    out_dir = out_dir or OUT
+    os.makedirs(out_dir, exist_ok=True)
     made = []
     for (n, name, note, lang, instruct), wav in zip(items, wavs):
         fn = f"{n:02d}_{slug(name)}.wav"
-        path = os.path.join(OUT, fn)
+        path = os.path.join(out_dir, fn)
+        if os.path.exists(path):
+            # 同名会被覆盖：每次生成都有随机性，覆盖掉的那条就再也找不回来了
+            print(f"  [注意] 覆盖已存在的 {fn}（听到满意的记得先 --lock）")
         sf.write(path, wav, sr)
         size = os.path.getsize(path)
         dur = len(wav) / float(sr)
@@ -228,10 +234,10 @@ def write_outputs(items, wavs, sr, text_override, meta):
     payload = {"model": meta["model"], "sample_rate": sr,
                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                "candidates": made}
-    with open(os.path.join(OUT, "candidates.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "candidates.json"), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    html_path = os.path.join(OUT, "index.html")
+    html_path = os.path.join(out_dir, "index.html")
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(build_html(payload))
     print(f"\n试听网页：{html_path}")
@@ -280,8 +286,9 @@ def build_html(payload):
 </body></html>"""
 
 
-def lock(candidate_id):
-    path = os.path.join(OUT, "candidates.json")
+def lock(candidate_id, out_dir=None):
+    out_dir = out_dir or OUT
+    path = os.path.join(out_dir, "candidates.json")
     if not os.path.isfile(path):
         raise SystemExit(f"[错误] 没有找到 {path} —— 先生成候选")
     data = json.load(open(path, encoding="utf-8"))
@@ -289,7 +296,7 @@ def lock(candidate_id):
     if not hit:
         raise SystemExit(f"[错误] 没有编号 {candidate_id} 的候选")
 
-    src = os.path.join(OUT, hit["file"])
+    src = os.path.join(out_dir, hit["file"])
     if not os.path.isfile(src):
         raise SystemExit(f"[错误] 音频不存在：{src}")
 
@@ -330,8 +337,9 @@ def lock(candidate_id):
 def main():
     ap = argparse.ArgumentParser(description="用文字造 E.V. 的音色（Qwen3-TTS VoiceDesign）")
     ap.add_argument("--dry-run", action="store_true", help="只打印描述词，不加载模型")
-    ap.add_argument("--only", default="", help="只跑指定编号，逗号分隔，如 1,3,4")
+    ap.add_argument("--only", default="", help="只跑指定【候选编号】，逗号分隔，如 1,3,4（不是第1~3条）")
     ap.add_argument("--text", default="", help="覆盖试音台词（默认中文那句）")
+    ap.add_argument("--tag", default="", help="输出到 voice_samples/design/<tag>/，避免覆盖上一次的结果")
     ap.add_argument("--model", default="",
                     help="模型 id 或本地目录（默认自动找 models/Qwen3-TTS-12Hz-1.7B-VoiceDesign）")
     ap.add_argument("--device", default="cuda:0", help="cuda:0 / cpu")
@@ -340,8 +348,10 @@ def main():
     ap.add_argument("--lock", type=int, default=0, help="把某条候选锁定成参考音频")
     args = ap.parse_args()
 
+    out_dir = os.path.join(BASE_OUT, args.tag) if args.tag else BASE_OUT
+
     if args.lock:
-        lock(args.lock)
+        lock(args.lock, out_dir)
         return
 
     items = CANDIDATES
@@ -355,12 +365,13 @@ def main():
         print_candidates(items)
         print(f"\n共 {len(items)} 条。去掉 --dry-run 就会真的生成（首跑要下 ~4.5GB 权重）。")
         print(f"模型：{resolve_model(args.model)}")
+        print(f"输出：{out_dir}")
         return
 
     model_id = resolve_model(args.model)
     model = load_model(model_id, args.device, args.dtype, args.flash)
     wavs, sr = generate(model, items, args.text)
-    write_outputs(items, wavs, sr, args.text, {"model": model_id})
+    write_outputs(items, wavs, sr, args.text, {"model": model_id}, out_dir)
 
     try:
         import torch
@@ -369,7 +380,8 @@ def main():
             torch.cuda.empty_cache()
     except Exception:                           # noqa: BLE001
         pass
-    print("\n听完：python app/design_voice.py --lock <编号>")
+    tag_arg = f" --tag {args.tag}" if args.tag else ""
+    print(f"\n听完：python app/design_voice.py --lock <编号>{tag_arg}")
 
 
 if __name__ == "__main__":

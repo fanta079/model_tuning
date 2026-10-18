@@ -6,260 +6,381 @@
 <title>E.V.</title>
 <style>
   :root{
-    --bg:#060a0f; --panel:#0b131a; --line:rgba(90,209,230,.16); --text:#dceaf3;
-    --dim:#6d8798; --accent:#5ad1e6; --accent-dim:#1d5f70;
-    --err:#ff7a7a; --ok:#4fd6a8; --amber:#ffb45c; --violet:#a78bfa;
-    --hud:"Bahnschrift","DIN Alternate","Segoe UI Variable Display",
-          "PingFang SC","Microsoft YaHei",sans-serif;
+    --bg:#05080b;
+    --ink:#c6d7e2;
+    --ink-hi:#e9f7ff;
+    --dim:rgba(198,215,226,.44);
+    --dim2:rgba(198,215,226,.22);
+    --line:rgba(152,203,229,.10);
+    --line2:rgba(152,203,229,.20);
+    --cy:#7fe3ff;
+    --amber:#ffb35c;
+    --red:#ff6b5e;
+    --grn:#5ee0a8;
+    --violet:#a78bfa;
+    --mono:ui-monospace,"Cascadia Mono","JetBrains Mono","SF Mono",Consolas,monospace;
+    --sans:"Bahnschrift","DIN Alternate","Segoe UI Variable Display","PingFang SC","Microsoft YaHei",sans-serif;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
-    margin:0;color:var(--text);position:relative;
-    font:15px/1.65 var(--hud);
-    display:flex;flex-direction:column;overflow:hidden;
-    background:
-      radial-gradient(1100px 640px at 50% 16%, #0d2431 0%, #070d14 52%, #04070a 100%);
+    margin:0;overflow:hidden;color:var(--ink);background:var(--bg);
+    font:13.5px/1.6 var(--sans);
+    display:grid;
+    grid-template-rows:38px minmax(0,1fr) auto;
+    grid-template-columns:214px minmax(0,1fr) 296px;
+    grid-template-areas:"head head head" "left stage right" "foot foot foot";
   }
-  /* 网格纵深（不遮交互）*/
+  /* 底纹：极细网格 + 扫描线 + 暗角，三层叠加，几乎看不见但撑起质感 */
   body::before{
     content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
     background-image:
-      linear-gradient(rgba(90,209,230,.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(90,209,230,.05) 1px, transparent 1px);
-    background-size:46px 46px;
-    -webkit-mask-image:radial-gradient(circle at 50% 38%, #000 0%, transparent 70%);
-            mask-image:radial-gradient(circle at 50% 38%, #000 0%, transparent 70%);
+      linear-gradient(rgba(127,227,255,.030) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(127,227,255,.030) 1px,transparent 1px);
+    background-size:32px 32px;
+    -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 46%,#000 0%,transparent 78%);
+            mask-image:radial-gradient(ellipse 70% 60% at 50% 46%,#000 0%,transparent 78%);
   }
-  /* 暗角，把视线压到球体上 */
   body::after{
-    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-    background:radial-gradient(circle at 50% 44%, transparent 38%, rgba(0,0,0,.62) 100%);
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:60;
+    background:
+      repeating-linear-gradient(0deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px),
+      radial-gradient(ellipse 76% 70% at 50% 44%,transparent 40%,rgba(0,0,0,.72) 100%);
   }
   body > *{position:relative;z-index:1}
 
+  /* 切角：HUD 的招牌。任何带 .cut 的块都切掉左上 + 右下 */
+  .cut{clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+  .cut-sm{clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+
+  /* 9px 等宽大写标签：HUD 里所有「说明文字」都是这个规格 */
+  .k{font:9px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--dim2)}
+  .sec{
+    font:9px/1 var(--mono);letter-spacing:.28em;text-transform:uppercase;color:var(--dim2);
+    display:flex;align-items:center;gap:8px;margin:0 0 8px;
+  }
+  .sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent)}
+
   /* ---------- 顶栏 ---------- */
   header{
-    padding:10px 18px;border-bottom:1px solid var(--line);
-    display:flex;align-items:center;gap:12px;flex:none;
-    background:linear-gradient(to bottom, rgba(10,20,28,.92), rgba(6,10,15,.55));
+    grid-area:head;display:flex;align-items:center;gap:12px;padding:0 14px;
+    border-bottom:1px solid var(--line2);position:relative;
+    background:linear-gradient(180deg,rgba(11,19,26,.92),rgba(5,8,11,.30));
+  }
+  header::after{
+    content:"";position:absolute;left:0;bottom:-1px;height:1px;right:0;
+    background:linear-gradient(90deg,var(--cy) 0%,rgba(127,227,255,.10) 26%,transparent 55%);
+    opacity:.55;pointer-events:none;
   }
   header h1{
-    font-size:15px;font-weight:600;margin:0;letter-spacing:.42em;
-    color:#bfeaf5;text-shadow:0 0 18px rgba(90,209,230,.45);
+    margin:0;font:600 13px/1 var(--sans);letter-spacing:.52em;color:var(--ink-hi);
+    display:flex;align-items:baseline;
   }
-  header h1::before{
-    content:"";display:inline-block;width:3px;height:14px;margin-right:12px;
-    background:linear-gradient(180deg, #5ad1e6, rgba(90,209,230,.15));
-    box-shadow:0 0 10px rgba(90,209,230,.7);vertical-align:-2px;
+  header h1 small{
+    font:9px/1 var(--mono);letter-spacing:.22em;color:var(--dim2);margin-left:11px;
+    text-transform:uppercase;font-weight:400;
   }
-  /* 记录开关（触摸目标 ≥44px）*/
+  /* 状态灯：呼吸只走透明度和一点点尺寸，不做位移 —— 位移是廉价感的来源 */
+  #dot{
+    width:6px;height:6px;flex:none;background:var(--dim2);
+    box-shadow:0 0 0 1px rgba(152,203,229,.20);
+    transition:background .25s;
+  }
+  #dot.on{background:var(--cy);animation:breathe 2.4s ease-in-out infinite}
+  #dot.rec{background:var(--red);animation:breathe 1.1s ease-in-out infinite}
+  #dot.think{background:var(--violet);animation:breathe .9s ease-in-out infinite}
+  #dot.speak{background:var(--grn);animation:breathe 1.4s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
+  #stateLbl{
+    font:9px/1 var(--mono);letter-spacing:.26em;text-transform:uppercase;
+    color:var(--ink);min-width:64px;
+  }
+  #health{
+    margin-left:auto;font:9px/1.5 var(--mono);letter-spacing:.14em;color:var(--dim2);
+    text-align:right;text-transform:uppercase;white-space:nowrap;
+  }
+  #health .bad{color:var(--red)}
+  #health .good{color:var(--grn)}
   #logToggle{
-    height:34px;min-width:78px;padding:0 12px;margin-left:2px;
-    background:rgba(90,209,230,.06);border:1px solid var(--line);
-    border-radius:6px;color:#9dc3d2;font:inherit;font-size:12px;
-    letter-spacing:.14em;cursor:pointer;transition:.16s;
-    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    height:24px;padding:0 10px;flex:none;
+    background:transparent;border:1px solid var(--line2);color:var(--dim);
+    font:9px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;transition:.15s;
   }
-  #logToggle:hover{border-color:rgba(90,209,230,.5);color:#e6f7fc}
-  #logToggle[aria-pressed="true"]{
-    background:rgba(90,209,230,.16);border-color:rgba(90,209,230,.62);color:#eafaff;
-  }
+  #logToggle:hover{border-color:rgba(127,227,255,.55);color:var(--ink-hi)}
+  #logToggle[aria-pressed="true"]{border-color:rgba(127,227,255,.55);color:var(--cy);background:rgba(127,227,255,.07)}
   #unread{
-    display:none;min-width:16px;height:16px;padding:0 4px;border-radius:8px;
-    background:var(--amber);color:#1a1206;font-size:10px;font-weight:700;
-    line-height:16px;text-align:center;letter-spacing:0;
+    display:none;min-width:14px;height:14px;padding:0 3px;
+    background:var(--amber);color:#150c02;font:700 9px/14px var(--mono);
+    letter-spacing:0;text-align:center;
   }
   #unread.on{display:inline-block}
-  #health{
-    font-size:11px;color:var(--dim);margin-left:auto;text-align:right;
-    line-height:1.5;letter-spacing:.08em;
+  #buildStamp{
+    font:9px/1 var(--mono);letter-spacing:.12em;color:rgba(198,215,226,.16);
+    cursor:pointer;user-select:none;white-space:nowrap;
   }
-  #health .bad{color:var(--err)}
-  #health .good{color:var(--ok)}
+  #buildStamp:hover{color:var(--dim)}
 
-  /* ---------- 舞台：球体 + 声频 ---------- */
+  /* ---------- 左：遥测面板 ---------- */
+  #panelL{
+    grid-area:left;border-right:1px solid var(--line);
+    padding:13px 13px 10px;display:flex;flex-direction:column;gap:16px;
+    overflow:hidden;min-height:0;
+  }
+  .ro{
+    display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+    padding:4px 0;border-bottom:1px solid rgba(152,203,229,.045);
+  }
+  .ro:last-child{border-bottom:none}
+  .ro .v{
+    font:11px/1 var(--mono);letter-spacing:.05em;color:var(--ink);
+    font-variant-numeric:tabular-nums;text-align:right;
+    max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .ro .v.cy{color:var(--cy)}
+  .ro .v.dim{color:var(--dim)}
+  #tLevelBar{
+    height:3px;margin:2px 0 6px;background:rgba(152,203,229,.09);position:relative;overflow:hidden;
+  }
+  #tLevelBar i{
+    position:absolute;left:0;top:0;bottom:0;width:0;
+    background:linear-gradient(90deg,rgba(127,227,255,.45),var(--cy));
+    transition:width .07s linear;
+  }
+  /* 侧栏底部竖排刻度尺，纯装饰 */
+  #panelL .spacer{flex:1;min-height:8px}
+  #panelL .rule{
+    height:26px;border-top:1px solid var(--line);
+    background-image:repeating-linear-gradient(90deg,rgba(152,203,229,.26) 0 1px,transparent 1px 6px);
+    opacity:.75;
+  }
+
+  /* ---------- 中：舞台 ---------- */
   #stage{
-    flex:1;min-height:0;position:relative;
-    display:flex;flex-direction:column;
-    align-items:center;justify-content:center;gap:2px;padding:6px 18px 0;
+    grid-area:stage;position:relative;min-height:0;min-width:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:0;padding:10px 20px 8px;
   }
-  /* HUD 括角（纯装饰）*/
-  #stage::before,#stage::after{
-    content:"";position:absolute;width:28px;height:28px;pointer-events:none;
-    border:1px solid rgba(90,209,230,.30);
-  }
-  #stage::before{left:20px;top:14px;border-right:none;border-bottom:none}
-  #stage::after{right:20px;bottom:14px;border-left:none;border-top:none}
-
+  /* 四角定位标记（两元素 x 两伪元素） */
+  .brk{position:absolute;width:22px;height:22px;pointer-events:none;z-index:2}
+  .brk.a{left:12px;top:10px;border-left:1px solid rgba(127,227,255,.28);border-top:1px solid rgba(127,227,255,.28)}
+  .brk.b{right:12px;bottom:10px;border-right:1px solid rgba(127,227,255,.28);border-bottom:1px solid rgba(127,227,255,.28)}
   #orb{
-    width:min(360px,48vh);aspect-ratio:1;cursor:pointer;
-    display:block;touch-action:manipulation;
-    filter:drop-shadow(0 0 26px rgba(90,209,230,.14));
+    width:min(340px,44vh);aspect-ratio:1;cursor:pointer;display:block;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;
   }
+  #orb:focus-visible{outline:1px solid rgba(127,227,255,.5);outline-offset:8px}
   #recTimer{
-    height:20px;font-size:12px;letter-spacing:1px;color:var(--err);
-    opacity:0;transition:opacity .2s;
+    height:16px;font:10px/1 var(--mono);letter-spacing:.2em;color:var(--red);
+    text-transform:uppercase;opacity:0;transition:opacity .2s;
   }
   #recTimer.on{opacity:1}
   #meter{
-    width:min(280px,62%);height:3px;border-radius:2px;overflow:hidden;
-    background:#22262d;opacity:0;transition:opacity .2s;
+    width:min(240px,52%);height:2px;opacity:0;transition:opacity .2s;
+    background:rgba(255,107,94,.16);
   }
   #meter.on{opacity:1}
-  #meterFill{height:100%;width:0;background:var(--err);transition:width .06s linear}
-  #devInfo{height:16px;font-size:11px;color:#5c6169;opacity:0;transition:opacity .2s}
+  #meterFill{height:100%;width:0;background:var(--red);transition:width .06s linear}
+  #devInfo{
+    height:14px;font:9px/1 var(--mono);letter-spacing:.16em;color:var(--dim2);
+    text-transform:uppercase;opacity:0;transition:opacity .2s;
+    max-width:92%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
   #devInfo.on{opacity:1}
-  #wave{width:100%;max-width:560px;height:54px;display:block}
-
-  /* ---------- 对话记录（默认隐藏，覆盖在舞台上，不挤压球体）---------- */
-  #log{
-    position:absolute;left:0;right:0;bottom:0;z-index:6;
-    max-height:72%;overflow-y:auto;
-    padding:14px 18px 16px;
-    display:flex;flex-direction:column;gap:10px;
-    background:linear-gradient(to top, rgba(4,8,12,.97) 30%, rgba(4,8,12,.72));
-    backdrop-filter:blur(10px);
-    border-top:1px solid rgba(90,209,230,.22);
-    box-shadow:0 -18px 40px rgba(0,0,0,.55);
-    opacity:0;transform:translateY(14px);pointer-events:none;
-    transition:opacity .22s ease, transform .26s cubic-bezier(.2,.7,.3,1);
-  }
-  #log.show{opacity:1;transform:translateY(0);pointer-events:auto}
-  .row{display:flex;flex-direction:column;gap:2px;max-width:84%}
-  .row.me{align-self:flex-end;align-items:flex-end}
-  .row.ev{align-self:flex-start}
-  .who{font-size:10px;color:#5f7e8f;letter-spacing:.2em}
-  .bub{
-    padding:8px 12px;border-radius:10px;white-space:pre-wrap;
-    word-break:break-word;font-size:14px;line-height:1.6;
-  }
-  .row.me .bub{background:rgba(90,209,230,.10);border:1px solid rgba(90,209,230,.22)}
-  .row.ev .bub{background:rgba(29,95,112,.30);border:1px solid rgba(90,209,230,.30);color:#e7f8ff}
-  /* 流式输出时气泡尾巴上闪一个光标，表示"还在说" */
-  .bub.live::after{
-    content:"▍";margin-left:1px;color:var(--accent);
-    animation:blink .9s steps(1) infinite;
-  }
-  @keyframes blink{50%{opacity:0}}
-  .row.sys{align-self:center;max-width:100%}
-  .row.sys .bub{
-    background:none;color:#5f7e8f;font-size:11.5px;padding:2px 0;
-    text-align:center;letter-spacing:.06em;
-  }
-
-  /* ---------- 底部控制 ---------- */
-  footer{
-    flex:none;padding:10px 18px 14px;
+  #waveWrap{width:100%;max-width:620px;margin-top:6px}
+  #wave{width:100%;height:54px;display:block}
+  #waveWrap .ruler{
+    height:9px;margin-top:-1px;
     border-top:1px solid var(--line);
-    background:linear-gradient(to top, rgba(6,11,16,.95), rgba(6,11,16,.4));
-    display:flex;flex-direction:column;align-items:center;gap:8px;
+    background-image:repeating-linear-gradient(90deg,rgba(152,203,229,.20) 0 1px,transparent 1px 13px);
+    opacity:.8;
+  }
+
+  /* ---------- 右：对话记录 ---------- */
+  #panelR{
+    grid-area:right;border-left:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0;overflow:hidden;
+    background:linear-gradient(180deg,rgba(8,14,19,.55),rgba(5,8,11,.15));
+  }
+  #panelR .sec{margin:12px 13px 0}
+  #log{
+    flex:1;min-height:0;overflow-y:auto;padding:10px 13px 14px;
+    display:flex;flex-direction:column;gap:9px;
+    scrollbar-width:thin;scrollbar-color:rgba(152,203,229,.20) transparent;
+  }
+  #log::-webkit-scrollbar{width:3px}
+  #log::-webkit-scrollbar-thumb{background:rgba(152,203,229,.22)}
+  /* 不用气泡：左侧一根竖线 + 小标签，信息密度更高，也更像终端记录 */
+  .row{padding-left:9px;border-left:1px solid var(--line2);max-width:100%}
+  .row.me{border-left-color:rgba(127,227,255,.34)}
+  .row.ev{border-left-color:rgba(94,224,168,.28)}
+  .who{
+    font:9px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;
+    color:var(--dim2);margin-bottom:4px;
+  }
+  .row.me .who{color:rgba(127,227,255,.55)}
+  .row.ev .who{color:rgba(94,224,168,.55)}
+  .bub{
+    white-space:pre-wrap;word-break:break-word;
+    font-size:12.5px;line-height:1.66;color:#c9dae6;
+  }
+  .row.me .bub{color:#9dbfd0}
+  .bub.live::after{content:"▍";margin-left:1px;color:var(--cy);animation:blink .9s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .row.sys{border-left-color:rgba(152,203,229,.10)}
+  .row.sys .bub{font:10px/1.5 var(--mono);letter-spacing:.06em;color:var(--dim2)}
+
+  /* ---------- 底栏 ---------- */
+  footer{
+    grid-area:foot;border-top:1px solid var(--line2);
+    padding:8px 14px 10px;position:relative;
+    background:linear-gradient(0deg,rgba(9,15,21,.94),rgba(5,8,11,.30));
+    display:flex;flex-direction:column;gap:7px;
+  }
+  footer::before{
+    content:"";position:absolute;left:0;right:0;top:-1px;height:1px;
+    background:linear-gradient(90deg,transparent 20%,rgba(127,227,255,.30) 50%,transparent 80%);
+    opacity:.5;
   }
   #hint{
-    font-size:12.5px;color:#7fa0b2;min-height:20px;text-align:center;
-    letter-spacing:.1em;
+    font:9.5px/1.4 var(--mono);letter-spacing:.14em;color:var(--dim);
+    text-transform:uppercase;text-align:center;min-height:14px;
   }
-  .controls{display:flex;align-items:center;gap:8px;width:100%;max-width:560px}
+  .controls{display:flex;align-items:center;gap:8px;width:100%;max-width:720px;margin:0 auto}
   #mic{
-    flex:none;min-width:88px;height:44px;padding:0 18px;border-radius:8px;
-    border:1px solid rgba(90,209,230,.35);cursor:pointer;
-    background:linear-gradient(180deg, rgba(29,95,112,.85), rgba(16,58,70,.85));
-    color:#cdf3ff;font:inherit;font-size:13px;letter-spacing:.16em;
-    transition:.18s;
+    flex:none;height:34px;min-width:112px;padding:0 16px;
+    background:rgba(127,227,255,.055);border:1px solid rgba(127,227,255,.32);
+    color:#bfe9f8;font:10px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;
+    cursor:pointer;transition:.15s;
   }
-  #mic:hover:not(:disabled){
-    border-color:rgba(90,209,230,.8);color:#fff;
-    box-shadow:0 0 18px rgba(90,209,230,.28);
-  }
-  #mic:disabled{cursor:not-allowed;opacity:.4;box-shadow:none}
-  #mic.rec{
-    background:linear-gradient(180deg, rgba(120,52,26,.9), rgba(70,26,12,.9));
-    border-color:rgba(255,180,92,.75);color:#ffe2bd;
-    animation:pulse 1.15s infinite;
-  }
-  #mic.think{
-    background:linear-gradient(180deg, rgba(64,52,120,.9), rgba(35,28,70,.9));
-    border-color:rgba(167,139,250,.7);color:#e3dcff;
-  }
-  #mic.speak{
-    background:linear-gradient(180deg, rgba(20,90,72,.9), rgba(10,52,42,.9));
-    border-color:rgba(79,214,168,.7);color:#c9fee9;
-  }
+  #mic:hover:not(:disabled){background:rgba(127,227,255,.14);border-color:rgba(127,227,255,.66);color:#fff}
+  #mic:disabled{cursor:not-allowed;opacity:.32}
+  #mic.rec{background:rgba(255,107,94,.13);border-color:rgba(255,107,94,.66);color:#ffd6d1}
+  #mic.think{background:rgba(167,139,250,.10);border-color:rgba(167,139,250,.50);color:#e3dcff}
+  #mic.speak{background:rgba(94,224,168,.10);border-color:rgba(94,224,168,.52);color:#c9fee9}
   #phone{
-    flex:none;height:44px;padding:0 16px;border-radius:8px;
-    border:1px solid var(--line);cursor:pointer;
-    background:rgba(11,19,26,.9);color:#7fa0b2;font:inherit;
-    font-size:12.5px;letter-spacing:.14em;transition:.18s;
+    flex:none;height:34px;padding:0 13px;
+    background:transparent;border:1px solid var(--line2);color:var(--dim);
+    font:10px/1 var(--mono);letter-spacing:.20em;text-transform:uppercase;
+    cursor:pointer;transition:.15s;
   }
-  #phone:hover{border-color:rgba(90,209,230,.55);color:#dff5fb}
-  #phone.on{
-    background:rgba(20,90,72,.55);border-color:rgba(79,214,168,.75);color:#c9fee9;
-  }
-  @keyframes pulse{
-    0%,100%{box-shadow:0 0 0 0 rgba(255,180,92,.45)}
-    60%{box-shadow:0 0 0 14px rgba(255,180,92,0)}
-  }
+  #phone:hover{border-color:rgba(127,227,255,.5);color:var(--ink-hi)}
+  #phone.on{background:rgba(94,224,168,.10);border-color:rgba(94,224,168,.52);color:#c9fee9}
   #typeIn{
-    flex:1;min-width:0;height:44px;padding:0 12px;border-radius:8px;
-    border:1px solid var(--line);background:rgba(8,15,21,.92);color:var(--text);
-    font:inherit;font-size:14px;outline:none;transition:.18s;
+    flex:1;min-width:0;height:34px;padding:0 11px;
+    background:rgba(8,14,19,.85);border:1px solid var(--line2);
+    color:var(--ink);font:12.5px/1 var(--sans);outline:none;transition:.15s;
   }
-  #typeIn::placeholder{color:#4c6577}
-  #typeIn:focus{
-    border-color:rgba(90,209,230,.6);
-    box-shadow:0 0 0 3px rgba(90,209,230,.10);
-  }
+  #typeIn::placeholder{color:rgba(198,215,226,.26)}
+  #typeIn:focus{border-color:rgba(127,227,255,.55);box-shadow:0 0 0 1px rgba(127,227,255,.12)}
   #reset{
-    flex:none;height:44px;padding:0 12px;background:none;border:none;
-    color:#5f7e8f;font:inherit;font-size:11.5px;letter-spacing:.12em;cursor:pointer;
+    flex:none;height:34px;padding:0 10px;background:none;border:none;
+    color:var(--dim2);font:9.5px/1 var(--mono);letter-spacing:.2em;
+    text-transform:uppercase;cursor:pointer;transition:.15s;
   }
-  #reset:hover{color:#cfeaf3}
-  .devRow{display:none;width:100%;max-width:560px;justify-content:flex-end;margin-top:-2px}
+  #reset:hover{color:var(--ink-hi)}
+  .devRow{display:none;width:100%;max-width:720px;margin:0 auto;justify-content:flex-end;gap:6px}
   .devRow.on{display:flex}
   #dev{
-    background:#20242b;color:var(--dim);border:1px solid var(--line);
-    border-radius:8px;font-size:12px;padding:4px 6px;max-width:280px;
-    font-family:inherit;outline:none;
+    background:rgba(8,14,19,.9);color:var(--dim);border:1px solid var(--line2);
+    font:10px/1 var(--mono);letter-spacing:.06em;padding:4px 6px;max-width:270px;outline:none;
   }
   #devRefresh{
-    background:none;border:1px solid var(--line);border-radius:8px;
-    color:var(--dim);font-size:12px;padding:4px 8px;cursor:pointer;
-    font-family:inherit;margin-left:6px;
+    background:none;border:1px solid var(--line2);color:var(--dim2);
+    font:9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+    padding:4px 8px;cursor:pointer;
   }
-  #devRefresh:hover{border-color:var(--accent-dim);color:var(--text)}
-  .t{font-size:11px;color:#5c6169;cursor:pointer;user-select:none}
+  #devRefresh:hover{border-color:rgba(127,227,255,.45);color:var(--ink)}
   #diag{
-    display:none;width:100%;max-width:560px;margin-top:2px;
-    font:11px/1.5 ui-monospace,Consolas,monospace;color:#8b9099;
-    background:#1a1d22;border:1px solid var(--line);border-radius:8px;
-    padding:8px 10px;white-space:pre-wrap;word-break:break-all;
+    display:none;position:absolute;left:14px;right:14px;bottom:100%;margin-bottom:6px;
+    font:10px/1.55 var(--mono);color:rgba(198,215,226,.62);
+    background:rgba(4,8,11,.97);border:1px solid var(--line2);
+    padding:9px 11px;white-space:pre-wrap;word-break:break-all;max-height:38vh;overflow:auto;
+    z-index:30;
   }
   #diag.on{display:block}
+
+  /* ---------- 窄屏：侧栏收起，记录变回覆盖层 ---------- */
+  @media (max-width: 900px){
+    body{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "stage" "foot"}
+    #panelL{display:none}
+    #panelR{
+      position:fixed;left:0;right:0;bottom:0;top:auto;z-index:20;
+      max-height:64%;border-left:none;border-top:1px solid var(--line2);
+      background:rgba(4,8,11,.965);backdrop-filter:blur(12px);
+      opacity:0;transform:translateY(10px);pointer-events:none;
+      transition:opacity .2s,transform .24s cubic-bezier(.2,.7,.3,1);
+    }
+    body:not(.nolog) #panelR{opacity:1;transform:none;pointer-events:auto}
+    body.nolog #panelR{opacity:0;pointer-events:none}
+    #orb{width:min(300px,42vh)}
+  }
+  /* 宽屏：记录面板常显，开关只管收起整列 */
+  @media (min-width: 901px){
+    body.nolog{grid-template-columns:214px minmax(0,1fr) 0}
+    body.nolog #panelR{opacity:0;pointer-events:none}
+  }
+  @media (prefers-reduced-motion: reduce){
+    #dot.on,#dot.rec,#dot.think,#dot.speak{animation:none}
+    .bub.live::after{animation:none}
+  }
+
 </style>
 </head>
 <body>
-
 <header>
-  <h1>E.V.</h1>
-  <button id="logToggle" aria-pressed="false" aria-controls="log" title="显示 / 隐藏对话记录">
-    记录<span id="unread"></span>
-  </button>
+  <h1>E.V.<small>voice interface</small></h1>
+  <span id="dot"></span>
+  <span id="stateLbl">idle</span>
   <div id="health">检查组件…</div>
+  <button id="logToggle" aria-pressed="false" aria-controls="log" title="显示 / 隐藏对话记录">记录<span id="unread"></span></button>
+  <span id="buildStamp" title="点一下看诊断信息">__BUILD__</span>
 </header>
 
-<div id="stage">
+<aside id="panelL">
+  <div>
+    <div class="sec">telemetry</div>
+    <div class="ro"><span class="k">State</span><span class="v cy" id="tState">idle</span></div>
+    <div class="ro"><span class="k">Input</span><span class="v" id="tDev">—</span></div>
+    <div class="ro"><span class="k">Level</span><span class="v" id="tLevel">0%</span></div>
+    <div id="tLevelBar"><i></i></div>
+    <div class="ro"><span class="k">Vad</span><span class="v" id="tVad">offline</span></div>
+    <div class="ro"><span class="k">Session</span><span class="v" id="tClock">00:00</span></div>
+  </div>
+  <div>
+    <div class="sec">channel</div>
+    <div class="ro"><span class="k">Stt</span><span class="v dim">whisper</span></div>
+    <div class="ro"><span class="k">Llm</span><span class="v dim">qwen3.5·4b</span></div>
+    <div class="ro"><span class="k">Tts</span><span class="v dim">edge</span></div>
+    <div class="ro"><span class="k">Mode</span><span class="v" id="tMode">half-duplex</span></div>
+  </div>
+  <div class="spacer"></div>
+  <div>
+    <div class="sec">signal</div>
+    <div class="rule"></div>
+  </div>
+</aside>
+
+<main id="stage">
+  <span class="brk a" aria-hidden="true"></span>
+  <span class="brk b" aria-hidden="true"></span>
   <canvas id="orb" role="button" tabindex="0" aria-label="开始或结束说话"></canvas>
   <div id="recTimer" aria-live="polite"></div>
   <div id="meter"><div id="meterFill"></div></div>
   <div id="devInfo"></div>
-  <canvas id="wave" aria-hidden="true"></canvas>
+  <div id="waveWrap">
+    <canvas id="wave" aria-hidden="true"></canvas>
+    <div class="ruler" aria-hidden="true"></div>
+  </div>
+</main>
 
-  <!-- 对话记录：默认隐藏，覆盖在舞台上（不挤压球体）-->
+<aside id="panelR">
+  <div class="sec">transcript</div>
   <div id="log" aria-hidden="true"></div>
-</div>
+</aside>
 
 <footer>
-  <div id="hint">点中间的球，或者下面的按钮开始说话</div>
+  <div id="hint">点中间的球，或按下面的按钮开始说话</div>
   <div class="controls">
     <button id="mic" disabled>准备中</button>
     <button id="phone" title="电话模式：不用按键，停顿自动接话">电话</button>
@@ -270,7 +391,6 @@
     <select id="dev" title="选择输入设备"></select>
     <button id="devRefresh" title="授权并刷新设备名">刷新</button>
   </div>
-  <div class="t" id="buildStamp" title="点一下看诊断信息">页面构建 __BUILD__</div>
   <pre id="diag"></pre>
 </footer>
 
@@ -300,6 +420,41 @@ const buildStamp = document.getElementById('buildStamp');
 
 const octx = orb.getContext('2d');
 const wctx = wave.getContext('2d');
+
+// ==================== HUD 遥测（纯展示，不参与任何逻辑）====================
+const dotEl      = document.getElementById('dot');
+const stateLblEl = document.getElementById('stateLbl');
+const tState     = document.getElementById('tState');
+const tDev       = document.getElementById('tDev');
+const tLevel     = document.getElementById('tLevel');
+const tLevelFill = document.querySelector('#tLevelBar i');
+const tVad       = document.getElementById('tVad');
+const tClock     = document.getElementById('tClock');
+const tMode      = document.getElementById('tMode');
+const BOOT_AT    = Date.now();
+const STATE_COL  = { idle: 'var(--cy)', recording: 'var(--red)',
+                     thinking: 'var(--violet)', speaking: 'var(--grn)' };
+
+function paintTelemetry() {
+  const s = state;
+  dotEl.className = s === 'recording' ? 'rec'
+                  : s === 'thinking'  ? 'think'
+                  : s === 'speaking'  ? 'speak' : 'on';
+  stateLblEl.textContent = s;
+  tState.textContent = s;
+  tState.style.color = STATE_COL[s] || 'var(--cy)';
+  tDev.textContent = devLabel || '—';
+  let pct = 0;
+  try { pct = Math.round(Math.min(1, level()) * 100); } catch (e) { pct = 0; }
+  tLevel.textContent = pct + '%';
+  if (tLevelFill) tLevelFill.style.width = pct + '%';
+  tVad.textContent  = phoneOn ? 'armed' : 'offline';
+  tMode.textContent = phoneOn ? 'full-duplex' : 'half-duplex';
+  const sec = Math.floor((Date.now() - BOOT_AT) / 1000);
+  tClock.textContent = String(Math.floor(sec / 60)).padStart(2, '0')
+                     + ':' + String(sec % 60).padStart(2, '0');
+}
+setInterval(paintTelemetry, 200);
 
 // ==================== 状态 ====================
 let state = 'idle';          // idle | recording | thinking | speaking
@@ -1430,6 +1585,8 @@ function setLogOpen(open) {
   logEl.classList.toggle('show', open);
   logEl.setAttribute('aria-hidden', String(!open));
   logToggle.setAttribute('aria-pressed', String(open));
+  // 宽屏时记录是右侧常驻面板，靠 body.nolog 收起整列
+  document.body.classList.toggle('nolog', !open);
   if (open) {
     unread = 0;
     renderUnread();
@@ -1496,7 +1653,9 @@ fillDevices();
 requestAnimationFrame(loop);
 checkHealth();
 setInterval(() => { if (state === 'idle') checkHealth(); }, 8000);
-window.addEventListener('resize', () => { /* 尺寸在 draw 里自适应 */ });
+// 宽屏：对话记录常显（JARVIS 那种右侧终端）；窄屏：默认收起，点「记录」才弹出
+setLogOpen(window.innerWidth > 900);
+window.addEventListener('resize', () => { /* 尺寸在 draw 里自适应 */ paintTelemetry(); });
 </script>
 </body>
 </html>
