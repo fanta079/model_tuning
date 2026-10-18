@@ -81,6 +81,9 @@ model_tuning/
 │   ├── backup.sh                 打包「数据+配置+报告+adapter」→ artifacts/*.tar.gz
 │   └── make_data_repo.sh         导出独立数据仓（data/ + reports/ + provenance README）
 │
+├── windows/                      🪟 Windows 侧辅助（不在 WSL 里跑）
+│   └── expose-wsl.ps1            把 WSL 的 8090 映射到宿主网卡（管理员运行；wsl --shutdown 后要重跑）
+│
 ├── setup-ml-env-uv.sh            WSL 环境一键安装 (uv 版, 幂等可重跑)
 ├── setup_weclone.sh              WeClone 独立环境一键搭建 (⚠️ 勿与 ~/venvs/ft 混装, 依赖冲突)
 ├── unsloth_compiled_cache/       Unsloth 内核编译缓存 (自动生成, 勿提交)

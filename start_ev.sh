@@ -163,6 +163,19 @@ if [ "$START_TTS" = 1 ]; then
 fi
 
 # ---------------- 2) 前端 ----------------
+# whisper 优先用 ext4 家目录那份：/mnt/e 上读 3GB 级文件会偶发 9P 短读
+# （报 "File model.bin is incomplete: failed to read a buffer ... at position 1.2GB"）
+# 拷过去不只是修 bug，加载还快 5~9 倍。
+if [ -z "${WHISPER_MODEL:-}" ]; then
+    for d in "$HOME/models/faster-whisper-large-v3" "$HOME/models/faster-whisper-medium"; do
+        if [ -s "$d/model.bin" ]; then
+            export WHISPER_MODEL="$d"
+            echo "[STT] 用 ext4 上的模型: $d"
+            break
+        fi
+    done
+fi
+
 export PORT="$APP_PORT"
 export LLM_BASE="http://127.0.0.1:${LLM_PORT}/v1"
 echo "[APP] 启动语音助手前端（端口 ${APP_PORT}）"

@@ -33,7 +33,7 @@ from pathlib import Path
 import httpx
 import edge_tts
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 # ---- 兼容补丁：PyAV >= 14 删掉了 av.open(metadata_errors=...) ----
 # faster-whisper 1.2.x 解码时仍在传这个参数（它只声明 av>=11，没有上界），
@@ -562,9 +562,27 @@ async def index():
                         headers={"Cache-Control": "no-store, max-age=0"})
 
 
+# ---------------- PWA：手机"添加到主屏幕"要的两样东西 ----------------
+# manifest 决定名字/图标/是否全屏（standalone = 没有地址栏，看着就是 App）
+_ICONS = {"192", "512"}
+
+
+@app.get("/manifest.webmanifest")
+async def manifest():
+    return FileResponse(os.path.join(HERE, "manifest.webmanifest"),
+                        media_type="application/manifest+json")
+
+
+@app.get("/icon-{size}.png")
+async def icon(size: str):
+    if size not in _ICONS:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(os.path.join(HERE, f"icon-{size}.png"),
+                        media_type="image/png")
+
+
 @app.get("/api/status")
 async def status():
-    # 不在这里阻塞地加载模型 —— 前端要秒回状态，否则按钮会一直"准备中"
     model, err = _whisper, _whisper_err
     loading = model is None and not err
     llm_ok, llm_msg = False, ""
