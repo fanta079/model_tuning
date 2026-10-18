@@ -15,12 +15,12 @@
 <style>
   :root{
     --bg:#05080b;
-    --ink:#c6d7e2;
-    --ink-hi:#e9f7ff;
-    --dim:rgba(198,215,226,.44);
-    --dim2:rgba(198,215,226,.22);
-    --line:rgba(152,203,229,.10);
-    --line2:rgba(152,203,229,.20);
+    --ink:#d9e8f2;
+    --ink-hi:#f2fbff;
+    --dim:rgba(206,224,236,.74);
+    --dim2:rgba(206,224,236,.50);
+    --line:rgba(152,203,229,.14);
+    --line2:rgba(152,203,229,.26);
     --cy:#7fe3ff;
     --amber:#ffb35c;
     --red:#ff6b5e;
@@ -30,10 +30,13 @@
     --sans:"Bahnschrift","DIN Alternate","Segoe UI Variable Display","PingFang SC","Microsoft YaHei",sans-serif;
   }
   *{box-sizing:border-box}
-  html,body{height:100%}
+  /* 暗底上浏览器默认的选中色几乎看不见，选个字都费劲 —— 显式给一个高对比的 */
+  ::selection{background:rgba(127,227,255,.32);color:#fff}
+  ::-moz-selection{background:rgba(127,227,255,.32);color:#fff}
+  html{height:100%;-webkit-text-size-adjust:100%}
   body{
     margin:0;overflow:hidden;color:var(--ink);background:var(--bg);
-    font:13.5px/1.6 var(--sans);
+    font:14px/1.65 var(--sans);
     display:grid;
     grid-template-rows:38px minmax(0,1fr) auto;
     grid-template-columns:214px minmax(0,1fr) 296px;

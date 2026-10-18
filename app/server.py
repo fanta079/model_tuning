@@ -716,8 +716,25 @@ if __name__ == "__main__":
     import uvicorn
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8090"))
-    print(f"E.V. 语音服务: http://{host}:{port}  （浏览器打开这个地址）")
+    # HTTPS 开关：麦克风只在安全上下文可用（localhost 或 https）。
+    # 手机通过局域网 IP 访问时，必须走 https，否则 getUserMedia 直接不可用。
+    tls_cert = os.environ.get("TLS_CERT", "")
+    tls_key = os.environ.get("TLS_KEY", "")
+    scheme = "https" if (tls_cert and tls_key) else "http"
+    print(f"E.V. 语音服务: {scheme}://{host}:{port}  （浏览器打开这个地址）")
+    if scheme == "https":
+        print(f"  TLS  : {tls_cert}")
+        print(f"         手机首次访问要点「继续前往」，并把证书装成受信任 CA")
+    else:
+        like_lan = os.environ.get("HOST", "") not in ("127.0.0.1", "localhost")
+        if like_lan:
+            print("  提示 : 用局域网 IP 打开时麦克风会被浏览器禁用（非安全上下文）")
+            print("         要语音就用 https（TLS_CERT/TLS_KEY），或改用 localhost")
     print(f"  STT  : faster-whisper {WHISPER_MODEL} @ {WHISPER_DEVICE}")
     print(f"  LLM  : {LLM_BASE}")
     print(f"  TTS  : {TTS_VOICE}")
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    if scheme == "https":
+        uvicorn.run(app, host=host, port=port, log_level="warning",
+                    ssl_certfile=tls_cert, ssl_keyfile=tls_key)
+    else:
+        uvicorn.run(app, host=host, port=port, log_level="warning")
