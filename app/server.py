@@ -94,6 +94,18 @@ TTS_BASE = os.environ.get("TTS_BASE", "").rstrip("/")
 TTS_TIMEOUT = float(os.environ.get("TTS_TIMEOUT", "30"))
 TTS_LANG = os.environ.get("TTS_LANG", "Chinese")
 
+# ---- 运行时语音模式（可以在界面里改，不用重启）----
+#   local : 本地 Qwen3-TTS 克隆（她要的声音，但 4060Ti 上实测 RTF≈4）
+#   cloud : edge-tts（首包 0.3~0.5s，但不是这个音色）
+#   off   : 不朗读，只出文字
+# 为什么要有 off：打字的时候人本来就在看字，声音晚 8 秒反而是干扰。
+# 默认值尊重原来的启动方式：起了本地服务就是 local，没起就是 cloud。
+_TTS_MODE_ENV = os.environ.get("TTS_MODE", "").strip().lower()
+TTS_MODE = _TTS_MODE_ENV if _TTS_MODE_ENV in ("local", "cloud", "off") \
+           else ("local" if TTS_BASE else "cloud")
+if TTS_MODE == "local" and not TTS_BASE:
+    TTS_MODE = "cloud"          # 没起本地服务还要 local，只能退回云端，别静默失败
+
 # system 提示词放在 app/system.txt，随时可改，改完重启生效
 SYSTEM_FILE = os.path.join(HERE, "system.txt")
 SYSTEM_PROMPT = os.environ.get("EV_SYSTEM", "")
@@ -207,14 +219,21 @@ async def llm(user_text: str) -> str:
 
 
 async def tts(text: str) -> bytes:
-    """把一句文字变成音频字节。两种引擎，由 TTS_BASE 决定。
+    """把一句文字变成音频字节。引擎由运行时 TTS_MODE 决定。
 
     返回的是**完整一段**（mp3 或 wav）—— 前端用 decodeAudioData 解，
     格式无所谓，所以本地服务直接给 wav（少一层编码，还能少几十毫秒）。
     """
-    if TTS_BASE:
+    if TTS_MODE == "local":
+        if not TTS_BASE:
+            raise RuntimeError("语音模式是 local，但没配 TTS_BASE（本地服务没起）")
         return await _tts_remote(text)
+    if TTS_MODE == "off":
+        raise RuntimeError("语音已关闭")
+    return await _tts_cloud(text)
 
+
+async def _tts_cloud(text: str) -> bytes:
     comm = edge_tts.Communicate(text, TTS_VOICE, rate=TTS_RATE,
                                 pitch=TTS_PITCH, volume=TTS_VOLUME)
     chunks = [c["data"] async for c in comm.stream() if c["type"] == "audio"]
@@ -388,6 +407,9 @@ async def turn_stream(user_text: str, t0: float, t_stt: float, src: str = "voice
                     return
                 txt = clean_for_tts(seg)
                 if not txt:
+                    continue
+                # 语音关掉时也要把队列吃掉：seg_q 有界（4），不消费会反压住 LLM 生成
+                if TTS_MODE == "off":
                     continue
                 try:
                     audio = await tts(txt)
@@ -581,6 +603,20 @@ async def icon(size: str):
                         media_type="image/png")
 
 
+@app.post("/api/tts_mode")
+async def set_tts_mode(body: dict):
+    """运行时切语音引擎：local / cloud / off。改完立刻生效，不用重启、不用重新加载模型。"""
+    global TTS_MODE
+    mode = str(body.get("mode", "")).strip().lower()
+    if mode not in ("local", "cloud", "off"):
+        return JSONResponse({"ok": False, "error": "mode 只能是 local/cloud/off"}, 400)
+    if mode == "local" and not TTS_BASE:
+        return JSONResponse({"ok": False, "error": "本地 TTS 没启动（没配 TTS_BASE）"}, 400)
+    TTS_MODE = mode
+    print(f"[TTS] 模式切换 -> {mode}", flush=True)
+    return {"ok": True, "mode": TTS_MODE}
+
+
 @app.get("/api/status")
 async def status():
     model, err = _whisper, _whisper_err
@@ -596,7 +632,9 @@ async def status():
 
     # TTS：走本地服务时真的探一下活，不然它挂了界面还显示绿的
     tts_ok, tts_msg = True, f"edge {TTS_VOICE} rate={TTS_RATE} pitch={TTS_PITCH}"
-    if TTS_BASE:
+    if TTS_MODE == "off":
+        tts_msg = "不朗读（只出文字）"
+    elif TTS_MODE == "local" and TTS_BASE:
         try:
             async with httpx.AsyncClient(timeout=2) as c:
                 r = await c.get(f"{TTS_BASE}/health")
@@ -615,7 +653,8 @@ async def status():
         "stt": {"ok": model is not None, "msg": err or f"{WHISPER_MODEL}",
                 "loading": loading},
         "llm": {"ok": llm_ok, "msg": llm_msg, "base": LLM_BASE},
-        "tts": {"ok": tts_ok, "msg": tts_msg, "base": TTS_BASE or "edge-tts"},
+        "tts": {"ok": tts_ok, "msg": tts_msg, "base": TTS_BASE or "edge-tts",
+                "mode": TTS_MODE, "has_local": bool(TTS_BASE)},
         "system_prompt": SYSTEM_PROMPT[:120],
         "turns": len(_history) // 2,
     }

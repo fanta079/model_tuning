@@ -129,6 +129,24 @@ if [ "$START_TTS" = 1 ]; then
             echo "      先跑 bash setup_tts.sh --only base，或改 TTS_VENV=/path/to/venv"
             exit 1
         fi
+
+        # 权重放哪影响的是**加载**（9P 慢且会短读，whisper 栽过），不影响单次合成速度。
+        TTS_MODEL_NAME="Qwen3-TTS-12Hz-0.6B-Base"
+        FAST_MODEL="$HOME/models/$TTS_MODEL_NAME"
+        SLOW_MODEL="$ROOT/models/$TTS_MODEL_NAME"
+        if [ ! -d "$FAST_MODEL" ] && [ -d "$SLOW_MODEL" ]; then
+            if [ "${EV_AUTO_EXT4:-0}" = 1 ]; then
+                echo "[TTS] 把权重从 9P 拷到 ext4（1.8GB，几十秒）……"
+                mkdir -p "$HOME/models"
+                cp -r "$SLOW_MODEL" "$FAST_MODEL"
+            else
+                echo "[TTS] 权重在 9P 上（$SLOW_MODEL）—— 加载慢，建议拷到 ext4"
+                echo "      建议先拷到 ext4（只需一次）："
+                echo "        cp -r \"$SLOW_MODEL\" \"$FAST_MODEL\""
+                echo "      或下次直接：EV_AUTO_EXT4=1 bash start_ev.sh --tts"
+            fi
+        fi
+
         echo "[TTS] 启动 app/tts_server.py（端口 ${TTS_PORT}）"
         echo "      日志    : $LOGDIR/tts_server.log"
         nohup "$TTS_VENV/bin/python" "$ROOT/app/tts_server.py" \

@@ -415,6 +415,19 @@
     padding:5px 9px;cursor:pointer;
   }
   #devRefresh:hover,#diagToggle:hover{border-color:rgba(95,216,255,.45);color:var(--ink)}
+  /* 三段选择器：语音引擎。低频但一旦要改就很急，所以放进设置里而不是藏起来 */
+  .seg{display:flex;flex:1;border:1px solid var(--line2);min-width:0}
+  .seg button{
+    flex:1;height:26px;min-width:0;background:transparent;border:none;
+    border-right:1px solid var(--line2);color:var(--dim);
+    font:9.5px/1 var(--mono);letter-spacing:.06em;cursor:pointer;transition:.15s;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;
+  }
+  .seg button:last-child{border-right:none}
+  .seg button:hover:not(:disabled){color:var(--ink-hi);background:rgba(95,216,255,.05)}
+  .seg button.on{background:rgba(95,216,255,.13);color:var(--cy)}
+  .seg button:disabled{opacity:.28;cursor:not-allowed}
+
   #diag{
     display:none;margin-top:10px;
     font:10px/1.6 var(--mono);color:rgba(186,214,232,.80);
@@ -535,6 +548,14 @@
       <span class="k">设备</span>
       <select id="dev" title="选择输入设备"></select>
       <button id="devRefresh" title="授权并刷新设备名">刷新</button>
+    </div>
+    <div class="toolsRow">
+      <span class="k">语音</span>
+      <div class="seg" id="ttsSeg">
+        <button data-mode="local" title="本地 Qwen3-TTS 克隆：是她的音色，但首句要 4~9 秒">本地音色</button>
+        <button data-mode="cloud" title="edge-tts：0.3~0.5 秒出声，但不是这个音色">云端·快</button>
+        <button data-mode="off" title="只出文字，不朗读">不朗读</button>
+      </div>
     </div>
     <div class="toolsRow">
       <span class="k">排查</span>
@@ -1303,6 +1324,42 @@ function addRow(who, text, cls, live, before) {
 function setHint(t) { hint.textContent = t; }
 
 // ==================== 健康检查 ====================
+// ==================== 语音引擎切换 ====================
+// 为什么要给这个开关：本地克隆音色在 4060Ti 上实测 RTF≈4（19 个字要 9 秒），
+// 而打字时文字 0.9 秒就出来了 —— 声音晚 8 秒反而是干扰。
+// 三个选项对应三种取舍，让用户自己挑，比替用户猜好。
+const ttsSeg = document.getElementById('ttsSeg');
+let ttsHasLocal = false;
+
+function paintTtsMode(mode, hasLocal) {
+  if (typeof hasLocal === 'boolean') ttsHasLocal = hasLocal;
+  ttsSeg.querySelectorAll('button').forEach(b => {
+    const m = b.dataset.mode;
+    b.classList.toggle('on', m === mode);
+    b.disabled = (m === 'local' && !ttsHasLocal);
+  });
+}
+
+ttsSeg.addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b || b.disabled || b.classList.contains('on')) return;
+  const mode = b.dataset.mode;
+  try {
+    const r = await fetch('/api/tts_mode', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
+    });
+    const d = await r.json();
+    if (!d.ok) { setHint('切换失败：' + (d.error || '未知原因')); return; }
+    paintTtsMode(d.mode, ttsHasLocal);
+    setHint(mode === 'off'  ? '已关闭朗读 —— 只出文字'
+          : mode === 'cloud' ? '已切到云端语音：出声快，但不是她的音色'
+          : '已用本地音色：首句要等 4~9 秒（4060Ti 上 RTF≈4）');
+  } catch (err) {
+    setHint('切换失败：' + err.message);
+  }
+});
+
 async function checkHealth() {
   try {
     const r = await fetch('/api/status');
@@ -1313,6 +1370,8 @@ async function checkHealth() {
     // 一条长串贴在右上角既不好看也没用 —— 挪进 diag 面板，想看按版本号
     health.innerHTML = [line('STT', d.stt), line('LLM', d.llm), line('TTS', d.tts)].join(' <i>/</i> ');
     health.title = 'LLM base: ' + (d.llm.base || '?');
+
+    paintTtsMode(d.tts && d.tts.mode, d.tts && d.tts.has_local);
 
     const allOk = d.stt.ok && d.llm.ok;
     if (allOk) {

@@ -61,11 +61,23 @@ GAP  = os.environ.get("TTS_GAP", "1") != "0"       # 压句中长停顿（默认
 
 
 def _resolve_model(arg: str) -> str:
+    """按「快 -> 慢」的顺序找权重。
+
+    顺序：显式指定 > 环境变量 > ext4 副本 > 仓库里的 /mnt/e 副本 > HF id
+
+    为什么优先 ext4：9P（/mnt/e）读大文件既慢又会短读（whisper 就栽在这）。
+    注意它影响的是**加载**，不是每次合成的速度 —— 实测连续调用同一句
+    4 次都是 7~9 秒，没有预热效应，说明推理是算力瓶颈、不是权重读取瓶颈。
+    """
     if arg:
         return arg
     env = os.environ.get("QWEN_TTS_CLONE_MODEL")
     if env:
         return env
+    home = os.path.expanduser("~")
+    fast = os.path.join(home, "models", LOCAL_NAME)
+    if os.path.isdir(fast) and os.listdir(fast):
+        return fast
     local = os.path.join(ROOT, "models", LOCAL_NAME)
     if os.path.isdir(local) and os.listdir(local):
         return local
@@ -118,8 +130,20 @@ def load(model_arg, device, dtype_name, ref_audio, ref_text):
     t0 = time.time()
     model_id = _resolve_model(model_arg)
     print(f"[加载] {model_id}", flush=True)
-    model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype)
-    print(f"[加载] 完成 {time.time() - t0:.1f}s", flush=True)
+    if model_id.startswith("/mnt/"):
+        print("[提示] 权重在 9P 挂载点（/mnt/...）上 —— 加载慢、还可能短读。"
+              "\n       合成速度不受它影响，但建议拷到 ext4："
+              f"\n         cp -r {model_id} ~/models/{LOCAL_NAME}", flush=True)
+    attn = os.environ.get("TTS_ATTN", "sdpa")
+    try:
+        model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype,
+                                              attn_implementation=attn)
+        print(f"[加载] 完成 {time.time() - t0:.1f}s  attn={attn}", flush=True)
+    except TypeError:
+        # 老版本的 qwen_tts 不认这个参数 —— 退回默认实现，别为了一点提速起不来
+        print(f"[加载] attn_implementation 不被支持，改用默认实现", flush=True)
+        model = Qwen3TTSModel.from_pretrained(model_id, device_map=device, dtype=dtype)
+        print(f"[加载] 完成 {time.time() - t0:.1f}s", flush=True)
 
     # 建一次 clone prompt，之后每次合成复用 —— 这正是不用"每句重新提特征"的关键
     t1 = time.time()
