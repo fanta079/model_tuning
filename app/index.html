@@ -412,6 +412,15 @@ function playerReady() {
     player.gain = ctx.createGain();
     player.gain.connect(player.an);
     player.an.connect(ctx.destination);
+    // 浏览器会把 AudioContext 挂起（自动播放策略）。挂起时 BufferSource 不走时间轴，
+    // onended 永远不触发 —— 界面就会卡在"说话中"。这里兜住，别让状态机僵死。
+    ctx.onstatechange = () => {
+      if (ctx.state !== 'running' && player.playing) {
+        stopPlayback();
+        if (turn && turn.done) finishTurn(turn);
+        else setHint('音频被浏览器挂起了 —— 点一下页面任意处继续');
+      }
+    };
   }
   if (player.ctx.state === 'suspended') { player.ctx.resume().catch(() => {}); }
   return player;
@@ -446,35 +455,41 @@ function b64ToBytes(b64) {
 }
 
 // 一段音频到了：解码 -> 按时间轴排期 -> 播。返回 Promise 不阻塞 SSE 读取
+let pendingAudio = 0;     // 正在解码、还没排进队列的段数（防止 done 先到误判"播完了"）
+
 async function enqueueAudio(b64, tok) {
   const p = playerReady();
   if (!p) return;
-  let buf;
+  pendingAudio += 1;
+  let buf = null;
   try {
     buf = await p.ctx.decodeAudioData(b64ToBytes(b64).buffer);
   } catch (e) {
     console.warn('音频段解码失败，跳过', e);            // 单段失败不影响后面
+  } finally {
+    pendingAudio -= 1;
+  }
+  if (buf && isToken(tok)) {
+    const src = p.ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(p.gain);
+    // 排期：比"现在"晚一点点（防止 start 时间已过被吞），并与上一段首尾相接
+    const at = Math.max(p.ctx.currentTime + 0.04, p.nextAt);
+    src.start(at);
+    p.nextAt = at + buf.duration + 0.01;
+    p.srcs.push(src);
+    p.playing = true;
+    playAnalyser = p.an;
+    analyser = p.an;                                  // 让球体跟着她的声音跳
+    if (state !== 'speaking') setState('speaking');
+    src.onended = () => {
+      p.srcs = p.srcs.filter(s => s !== src);
+      if (!p.srcs.length) { p.playing = false; onSpeechDrained(); }
+    };
     return;
   }
-  if (!isToken(tok)) return;                          // 这轮已被打断，丢掉
-
-  const src = p.ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(p.gain);
-  // 排期：比"现在"晚一点点（防止 start 时间已过被吞），并与上一段首尾相接
-  const at = Math.max(p.ctx.currentTime + 0.04, p.nextAt);
-  src.start(at);
-  p.nextAt = at + buf.duration + 0.01;
-  p.srcs.push(src);
-  p.playing = true;
-  playAnalyser = p.an;
-  analyser = p.an;                                    // 让球体跟着她的声音跳
-  if (state !== 'speaking') setState('speaking');
-
-  src.onended = () => {
-    p.srcs = p.srcs.filter(s => s !== src);
-    if (!p.srcs.length) { p.playing = false; onSpeechDrained(); }
-  };
+  // 这一段丢了：如果这是最后一段，别让界面卡在"说话中"
+  if (pendingAudio === 0 && !p.srcs.length) onSpeechDrained();
 }
 
 // 给某个 analyser 算音量
@@ -936,7 +951,10 @@ function loop() {
 }
 
 // ==================== 界面状态 ====================
-const LABEL = { idle: '说话', recording: '发送', thinking: '思考', speaking: '说话中' };
+// 说明：真流式之后 thinking / speaking 也允许点 —— 那一下不是"禁止说话"，
+// 而是"打断她"。对讲机感就是从这里消失的。
+const LABEL = { idle: '说话', recording: '发送', thinking: '打断', speaking: '打断' };
+let micBlocked = false;          // 组件没就绪（whisper 没加载 / 模型服务连不上）
 
 function setState(s) {
   state = s;
@@ -944,10 +962,8 @@ function setState(s) {
                 : (s === 'thinking') ? 'think'
                 : (s === 'speaking') ? 'speak' : '';
   mic.textContent = phoneOn ? '通话中' : LABEL[s];
-  // 半双工：thinking / speaking 时不许开新一轮。
-  // ⚠️ recording 必须可点 —— 那一下就是「发送」，锁住就永远发不出去。
-  // 电话模式下这个按钮不参与流程（用「挂断」退出）。
-  mic.disabled = phoneOn || (s === 'thinking' || s === 'speaking') || !hasMic;
+  // recording 必须可点（那一下 = 发送）；thinking/speaking 也可点（那一下 = 打断）
+  mic.disabled = !hasMic || phoneOn || micBlocked;
   orb.style.cursor = mic.disabled ? 'default' : 'pointer';
 
   if (s === 'recording') {
@@ -1009,16 +1025,17 @@ async function checkHealth() {
 
     const allOk = d.stt.ok && d.llm.ok;
     if (allOk) {
+      micBlocked = false;
       if (state === 'idle') {
         setState('idle');
-        setHint(hasMic ? '点中间的球开始说话，说完再点一下发送'
+        setHint(hasMic ? '点球说话（说完再点一下发送）；她在说时点球可以打断'
                        : '麦克风不可用（' + micWhy() + '）—— 打字也能聊');
       }
     } else if (d.stt.loading) {
-      mic.disabled = true; mic.textContent = '加载中';
+      micBlocked = true; mic.disabled = true; mic.textContent = '加载中';
       if (state === 'idle') setHint('语音识别模型正在载入（首次约 10~20 秒）…… 也可以先打字');
     } else {
-      mic.disabled = true; mic.textContent = '不可用';
+      micBlocked = true; mic.disabled = true; mic.textContent = '不可用';
       if (state === 'idle') {
         setHint('组件没就绪：'
           + (!d.stt.ok ? '语音识别未加载（' + (d.stt.msg || '') + '）' : '')
@@ -1027,7 +1044,7 @@ async function checkHealth() {
     }
   } catch (e) {
     health.innerHTML = '<span class="bad">后端连不上</span>';
-    mic.disabled = true; mic.textContent = '离线';
+    micBlocked = true; mic.disabled = true; mic.textContent = '离线';
     setHint('后端没起来？确认 run_app.sh 正在运行');
   }
 }
@@ -1289,7 +1306,7 @@ async function streamTurn(url, body, hintText) {
       method: 'POST', body: body, signal: ctrl.signal,
       headers: isForm ? undefined : { 'Content-Type': 'application/json' },
     });
-    if (!res.body) throw new Error('HTTP ' + res.status);
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
 
     const reader = res.body.getReader();
     const dec = new TextDecoder();
@@ -1341,7 +1358,7 @@ function onEvent(t, ev, bubble) {
     t.done = true;
     t.timing = ev.timing || {};
     if (ev.tts_error) t.ttsErr = ev.tts_error;
-    if (!player.srcs.length) finishTurn(t);           // TTS 全失败的极端情况
+    if (!player.srcs.length && !pendingAudio) finishTurn(t);  // 极端情况：TTS 全失败
   } else if (ev.t === 'error') {
     bubble.classList.remove('live');
     setState('idle');
@@ -1354,6 +1371,7 @@ function onEvent(t, ev, bubble) {
 // 最后一段音频播完（或没音频可播）时收尾
 function onSpeechDrained() {
   if (!turn || !turn.done) return;                    // token 还在来，先别收尾
+  if (pendingAudio > 0) return;                       // 还有段没解完码
   finishTurn(turn);
 }
 
@@ -1365,7 +1383,9 @@ function finishTurn(t) {
     ? '（首声 ' + tm.first_audio + 's / 总 ' + tm.total + 's）' : '';
   if (phoneOn) { resumeListening(); return; }         // 电话模式：接着说
   setState('idle');
-  setHint(t.ttsErr ? '语音合成失败，这条只有文字' : '可以继续说了　' + cost);
+  setHint(t.ttsErr
+    ? '语音合成失败，这条只有文字'
+    : '可以继续说了　' + cost + '　嫌点着麻烦就开「电话」');
 }
 
 function sendAudio(blob) {
@@ -1378,6 +1398,7 @@ function sendText(text) {
   text = (text || '').trim();
   if (!text) return;
   if (phoneOn) { setHint('电话模式下直接说话就行（想打字先点「挂断」）'); return; }
+  ensureCtx();                                        // 在按键手势里唤醒音频上下文
   if (state !== 'idle') abortTurn();                  // 正在说/正在想：直接打断再问
   streamTurn('/api/stream/text', JSON.stringify({ text: text }), '思考中……');
 }
@@ -1419,6 +1440,7 @@ function onTap() {
   if (phoneOn) return;
   if (state === 'idle') startRec();
   else if (state === 'recording') stopRec();
+  else { abortTurn(); startRec(); }        // 她在说 / 在想：这一下 = 打断 + 我要说
 }
 mic.onclick = onTap;
 orb.onclick = onTap;
@@ -1460,7 +1482,8 @@ if (!hasMic) {
 
 addRow('', '点中间的球开始说话。她话不多，别指望长篇大论。', 'sys');
 setState('idle');
-mic.disabled = true;       // 等健康检查确认组件就绪后再放开
+micBlocked = true;         // 等健康检查确认组件就绪后再放开
+mic.disabled = true;
 
 // 恢复上次选的麦克风（不用每次先录一遍才改设备）
 try { inputDeviceId = localStorage.getItem(MIC_KEY) || ''; } catch (e) {}

@@ -309,6 +309,11 @@ def sse(obj) -> str:
     return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
 
 
+# 8GB 卡只够跑一份 4B。打断时旧请求可能还没完全退出，
+# 用信号量保证同一时刻只有一路在生成 —— 否则两个 KV cache 直接把显存顶爆。
+_LLM_LOCK = asyncio.Semaphore(1)
+
+
 def _sse_response(gen) -> StreamingResponse:
     return StreamingResponse(gen, media_type="text/event-stream",
                              headers={"Cache-Control": "no-store",
@@ -364,27 +369,36 @@ async def turn_stream(user_text: str, t0: float, t_stt: float):
             buf = ""
             t_seg = time.time()
             stop = False
-            async for d in llm_stream(user_text):
-                if not stat["first_tok"]:
-                    stat["first_tok"] = time.time() - t0
-                d, stop = _cut_marks(d)
-                if d:
-                    parts.append(d)
-                    await emit({"t": "delta", "d": d})
-                    buf += d
-                while True:
-                    seg, buf = take_sentence(buf)
-                    if not seg:
+            # 抢许可：8GB 卡只够一份 4B，打断后旧请求还没退干净就再来一轮会 OOM
+            async with _LLM_LOCK:
+                async for d in llm_stream(user_text):
+                    if not stat["first_tok"]:
+                        stat["first_tok"] = time.time() - t0
+                    d, stop = _cut_marks(d)
+                    if d:
+                        parts.append(d)
+                        await emit({"t": "delta", "d": d})
+                        buf += d
+                    while True:
+                        seg, buf = take_sentence(buf)
+                        if not seg:
+                            break
+                        await seg_q.put(seg)
+                        t_seg = time.time()
+                    # 首句兜底：模型爱铺垫（"这个嘛，其实……"），等不到句号就先出声。
+                    # 优先切在逗号上（停顿自然），实在没有才硬切 —— 硬切会听着断气。
+                    if not stat["first_audio"] and len(buf) >= MIN_SEG:
+                        waited = time.time() - t_seg
+                        if waited > EAGER_DELAY:
+                            soft = max((buf.rfind(c) for c in SOFT_END), default=-1) + 1
+                            cut = soft if soft >= MIN_SEG else 0
+                            if not cut and waited > EAGER_DELAY * 2.4:
+                                cut = min(len(buf), MAX_SEG)
+                            if cut:
+                                await seg_q.put(buf[:cut].strip())
+                                buf, t_seg = buf[cut:].lstrip(), time.time()
+                    if stop:
                         break
-                    await seg_q.put(seg)
-                    t_seg = time.time()
-                # 首句兜底：模型爱铺垫（"这个嘛……"），等不到句号就先切一段出声
-                if not stat["first_audio"] and len(buf) >= MIN_SEG \
-                        and time.time() - t_seg > EAGER_DELAY:
-                    await seg_q.put(buf.strip())
-                    buf, t_seg = "", time.time()
-                if stop:
-                    break
             if buf.strip():
                 await seg_q.put(buf.strip())
             await seg_q.put(None)
@@ -422,7 +436,7 @@ async def turn_stream(user_text: str, t0: float, t_stt: float):
         finally:
             if not tw.done():
                 tw.cancel()
-            await out.put(None)
+            out.put_nowait(None)      # 用 put_nowait：取消中的任务里 await 可能再次被打断
 
     async def run():
         task = asyncio.create_task(worker())

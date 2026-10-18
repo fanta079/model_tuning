@@ -11,6 +11,8 @@
 所以直接用 PyTorch 在 GPU 上跑，对外暴露和 llama-server 一模一样的接口。
 P1 的 app/server.py 只要把 LLM_BASE 指过来就行，**一行代码都不用改**。
 
+支持 `"stream": true`（SSE / chunked）：语音助手要"边说边出"，不能等整段生成完。
+
 跟 llama.cpp 的取舍
 ------------------
 | | llama.cpp (CUDA版) | 本脚本 (PyTorch) |
@@ -36,6 +38,9 @@ P1 的 app/server.py 只要把 LLM_BASE 指过来就行，**一行代码都不�
     curl http://127.0.0.1:8080/v1/models
     curl http://127.0.0.1:8080/v1/chat/completions -H 'Content-Type: application/json' \
       -d '{"model":"ev","messages":[{"role":"user","content":"我今天很累"}]}'
+    # 流式（-N 关掉 curl 自己的缓冲，能肉眼看到 token 一个个出来）
+    curl -N http://127.0.0.1:8080/v1/chat/completions -H 'Content-Type: application/json' \
+      -d '{"model":"ev","stream":true,"messages":[{"role":"user","content":"我今天很累"}]}'
 """
 
 import argparse
@@ -217,17 +222,31 @@ class Handler(BaseHTTPRequestHandler):
         stop_ev = threading.Event()
         t0 = time.time()
         n_char = 0
+        got_any = False
         self._sse_headers()
         try:
             for text in generate_stream(msgs, max_new, temperature, top_p, stop_ev):
                 if not text:
                     continue
+                got_any = True
                 n_char += len(text)
                 self._sse({"choices": [{"index": 0, "delta": {"content": text}}]})
         except Exception as e:                          # noqa: BLE001
             stop_ev.set()
+            fallback = (isinstance(e, TypeError) and not got_any
+                        and "streamer" in str(e))
             try:
-                self._sse({"error": {"message": f"{type(e).__name__}: {e}"}})
+                if fallback:
+                    # 某些 Unsloth 版本给 generate 套了层不透传 streamer 的包装。
+                    # 别整轮报错，退化成"整段返回"——前端仍可用，只是没逐字效果。
+                    print(f"[生成-流式] 不支持 streamer，降级整段返回: {e}", flush=True)
+                    text = generate(msgs, max_new, temperature, top_p)
+                    if text:
+                        n_char += len(text)
+                        self._sse({"choices": [{"index": 0,
+                                                "delta": {"content": text}}]})
+                else:
+                    self._sse({"error": {"message": f"{type(e).__name__}: {e}"}})
             except OSError:
                 pass
         finally:

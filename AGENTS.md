@@ -2,7 +2,7 @@
 
 本文件是 AI Agent 在本仓库工作的操作手册：项目结构、环境、命令、约定与坑。改动结构或命令时同步更新本文件。
 
-> ⭐ **排查任何报错前，先查 `docs/踩坑记录.md`** —— 21 条已解决的实战坑（WSL/网络/环境/数据/显存/SFT 风格），每条含现象、原因、解法。新解决的坑应追加到该文档，保持持续更新。
+> ⭐ **排查任何报错前，先查 `docs/踩坑记录.md`** —— 22 条已解决的实战坑（WSL/网络/环境/数据/显存/SFT 风格），每条含现象、原因、解法。新解决的坑应追加到该文档，保持持续更新。
 
 ## 1. 项目概述
 
@@ -65,13 +65,15 @@ model_tuning/
 │
 ├── 语音助手 App (P1) ────────────────────────────────────
 │   ├── app/
-│   │   ├── server.py             后端: STT -> LLM -> TTS (FastAPI, 端口 8090)
-│   │   ├── index.html            前端: 半双工语音界面 (回完才能说下一句)
+│   │   ├── server.py             后端: STT -> LLM(流式) -> TTS(分句流式) 的 SSE 服务 (FastAPI, 8090)
+│   │   ├── index.html            前端: 流式语音界面 (逐字出文字 / 边收边播 / 可打断)
 │   │   ├── system.txt            语音专用 system prompt (禁括号动作/Markdown)
 │   │   ├── voice.json            🎭 音色配置 (voice / rate / pitch)
 │   │   ├── try_voices.py         音色试听台 (生成 8 组候选 + 可点击的试听网页)
+│   │   ├── design_voice.py       🎭 文字造音色 (Qwen3-TTS VoiceDesign) + 试听页 + --lock 锁定参考音频
 │   │   └── voice_samples/        试听产物 (已 gitignore, 可随时重新生成)
 │   ├── setup_app.sh              独立 venv ~/venvs/evapp + 装依赖 + 预下 whisper
+│   ├── setup_tts.sh              独立 venv ~/venvs/tts + qwen-tts + 下 VoiceDesign 权重 (音色设计用)
 │   ├── run_app.sh                启动语音助手（前端，端口 8090）
 │   ├── start_ev.sh               一条命令起「模型服务 + 前端」，支持 --adapter / --stop
 │   ├── backup.sh                 打包「数据+配置+报告+adapter」→ artifacts/*.tar.gz
@@ -81,7 +83,7 @@ model_tuning/
 ├── setup_weclone.sh              WeClone 独立环境一键搭建 (⚠️ 勿与 ~/venvs/ft 混装, 依赖冲突)
 ├── unsloth_compiled_cache/       Unsloth 内核编译缓存 (自动生成, 勿提交)
 ├── docs/                         📚 项目文档 (新文档一律放这里)
-│   ├── 踩坑记录.md                21 条环境/数据/训练/风格坑, 排查问题先查
+│   ├── 踩坑记录.md                22 条环境/数据/训练/风格坑, 排查问题先查
 │   ├── WeClone-数字分身落地.md      聊天记录微调数字分身方案 (独立 venv, 含微信导出格式)
 │   ├── 人设数据生产指南.md          从人设卡到可对话模型的完整流水线
 │   ├── 训练与推理脚本.md            8 个脚本逐个讲: 超参含义 / 环境变量 / 数据格式 / 坑
@@ -210,6 +212,14 @@ bash setup_app.sh
 source ~/venvs/evapp/bin/activate
 python app/try_voices.py
 
+# 换引擎: 用文字"造"音色 (Qwen3-TTS VoiceDesign, 1.7B, 需独占 GPU)
+#   环境单独一份：~/venvs/tts（qwen-tts 会拉自己的 torch，别装进 ft / evapp）
+bash setup_tts.sh                                     # 建环境 + 下 4.5GB 权重（魔搭）
+source ~/venvs/tts/bin/activate
+python app/design_voice.py --dry-run                  # 只打印 8 条描述词, 不加载模型
+python app/design_voice.py --only 1,3,4               # 生成候选 + 试听页
+python app/design_voice.py --lock 3                   # 锁定成 app/voice_lock/ref.wav + 写 voice.json
+
 # 起助手（另开终端先起 llama-server）
 bash run_app.sh                                       # 打开 http://localhost:8090
 PORT=8091 LLM_BASE=http://127.0.0.1:8080/v1 bash run_app.sh   # 换端口 / 换模型服务
@@ -221,8 +231,9 @@ bash start_ev.sh --no-llm                             # 只起前端（模型服
 bash start_ev.sh --stop                               # 全停，释放显存
 ```
 
-> P1 是**半双工**（回完才能说下一句），纯对话、无工具调用。
-> 完整架构 / 音色三层方案 / 路线图（P4 是**安卓 App**）见 `docs/P1-语音助手.md`。
+> P1 现在是**真流式**：LLM 边生成 -> 按句切 -> edge-tts 边合成 -> 浏览器边播，
+> 首声约 0.5~1.2s（不用等整段答案）；她在说时你开口/点球可以直接打断。
+> 纯对话、无工具调用。架构 / 音色三层方案 / 路线图（P4 是**安卓 App**）见 `docs/P1-语音助手.md`。
 
 ## 6. 显存约束 (8GB) 与调优参数
 
