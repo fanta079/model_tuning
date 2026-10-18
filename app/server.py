@@ -27,6 +27,8 @@ import re
 import tempfile
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 
 import httpx
 import edge_tts
@@ -363,7 +365,7 @@ async def _sse_error(msg: str) -> StreamingResponse:
     return _sse_response(g())
 
 
-async def turn_stream(user_text: str, t0: float, t_stt: float):
+async def turn_stream(user_text: str, t0: float, t_stt: float, src: str = "voice"):
     """一轮完整流水线：LLM 流 -> 切句 -> TTS -> SSE 推给浏览器。
 
     关键设计：**TTS 和 LLM 并行**。LLM 还在生成第 3 句时，第 1 句的音频
@@ -450,6 +452,7 @@ async def turn_stream(user_text: str, t0: float, t_stt: float):
                 _history.append({"role": "user", "content": user_text})
                 _history.append({"role": "assistant", "content": reply})
 
+            _log_turn(user_text, reply, time.time() - t0, src)
             await emit({"t": "done", "reply": reply, "tts_error": stat["tts_err"],
                         "timing": {"stt": round(t_stt, 2),
                                    "first_token": round(stat["first_tok"], 2),
@@ -491,9 +494,35 @@ async def turn_stream(user_text: str, t0: float, t_stt: float):
         yield chunk
 
 
+# ---------------- 对话落盘（为下一轮微调攒真实数据） ----------------
+# 为什么必须落盘：前端日志只活在浏览器内存里，刷新即失。而「真实使用分布」是
+# 比 API 生成好得多的微调数据 —— 但只有存下来才有得筛。见 docs/踩坑记录.md。
+CHATLOG_ON = os.environ.get("CHATLOG", "1") != "0"
+CHATLOG_DIR = Path(os.environ.get("CHATLOG_DIR", os.path.join(ROOT, "my_data", "chatlog")))
+
+
+def _log_turn(user_text: str, reply: str, ms: float, src: str) -> None:
+    """把一轮问答追加进当日 jsonl。绝不因为写日志而搞坏一轮对话。"""
+    if not CHATLOG_ON or not reply:
+        return
+    try:
+        CHATLOG_DIR.mkdir(parents=True, exist_ok=True)
+        rec = {"ts": datetime.now().isoformat(timespec="seconds"),
+               "src": src,              # voice | text
+               "user": user_text,
+               "reply": reply,
+               "ms": round(ms, 2),
+               "rating": None}          # 留给人打标：1=好 0=不好；不标也不影响筛选
+        p = CHATLOG_DIR / f"{datetime.now():%Y-%m-%d}.jsonl"
+        with p.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as e:                  # noqa: BLE001
+        print(f"[chatlog] 写日志失败（不影响对话）: {e}", flush=True)
+
+
 # ---------------- 路由 ----------------
 
-async def _respond(user_text: str, t0: float, t_stt: float):
+async def _respond(user_text: str, t0: float, t_stt: float, src: str = "voice"):
     """从"用户文本"往后走完：LLM -> TTS -> 记上下文 -> 返回。语音和打字两条入口共用。"""
     try:
         reply = await llm(user_text)
@@ -512,6 +541,7 @@ async def _respond(user_text: str, t0: float, t_stt: float):
     _history.append({"role": "user", "content": user_text})
     _history.append({"role": "assistant", "content": reply})
 
+    _log_turn(user_text, reply, time.time() - t0, src)
     print(f"[轮次] STT {t_stt:.1f}s / LLM {t_llm - t_stt:.1f}s / "
           f"总 {time.time() - t0:.1f}s | 你: {user_text[:30]} | E.V.: {reply[:30]}",
           flush=True)
@@ -617,7 +647,7 @@ async def text_turn(payload: dict):
         return JSONResponse({"ok": False, "error": "空消息"}, status_code=400)
     if len(text) > 2000:
         return JSONResponse({"ok": False, "error": "太长了，说重点"}, status_code=400)
-    return await _respond(text, time.time(), 0.0)
+    return await _respond(text, time.time(), 0.0, src="text")
 
 
 # ---------------- 流式入口（前端用的就是这两个） ----------------
@@ -661,7 +691,7 @@ async def stream_text(payload: dict):
         return await _sse_error("空消息")
     if len(text) > 2000:
         return await _sse_error("太长了，说重点")
-    return _sse_response(turn_stream(text, time.time(), 0.0))
+    return _sse_response(turn_stream(text, time.time(), 0.0, src="text"))
 
 
 if __name__ == "__main__":
