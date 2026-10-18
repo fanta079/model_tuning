@@ -77,6 +77,7 @@ model_tuning/
 │   ├── setup_tts.sh              独立 venv ~/venvs/tts + qwen-tts + 下 VoiceDesign 权重 (音色设计用)
 │   ├── run_app.sh                启动语音助手（前端，端口 8090）
 │   ├── start_ev.sh               一条命令起「模型服务 + 前端」，支持 --adapter / --tts / --stop
+│   ├── mobile.sh                 手机接入：cloudflared / tailscale 出 https（麦克风只在安全上下文可用）
 │   ├── backup.sh                 打包「数据+配置+报告+adapter」→ artifacts/*.tar.gz
 │   └── make_data_repo.sh         导出独立数据仓（data/ + reports/ + provenance README）
 │

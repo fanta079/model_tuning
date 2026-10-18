@@ -285,6 +285,8 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=int(os.environ.get("TTS_PORT", "8092")))
     ap.add_argument("--ref", default="", help="覆盖 voice.json 里的参考音频")
+    ap.add_argument("--ref-text", default="",
+                    help="覆盖参考文本（换参考音频时必须同步改，否则音色会漂）")
     ap.add_argument("--check", action="store_true", help="合成一句自检后退出")
     ap.add_argument("--no-trim", action="store_true",
                     help="不剪首尾静音（默认剪；模型短句会在前面吐 ~1.2s 空白）")
@@ -301,6 +303,8 @@ def main():
     ref_audio, ref_text, _cfg = _read_voice_cfg()
     if args.ref:
         ref_audio = args.ref
+    if args.ref_text:
+        ref_text = args.ref_text
     load(args.model, args.device, args.dtype, ref_audio, ref_text)
 
     if args.check:
