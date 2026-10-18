@@ -49,6 +49,7 @@ model_tuning/
 │   ├── wechat_paste_to_json.py   微信 PC 复制文本 -> conversations JSON (安全, 免解密工具)
 │   └── prepare_data.py           通用: 校验/清洗/去重/划分 (支持 Alpaca / ShareGPT / 对话)
 ├── rebuild_dataset.py            ⭐ 训练集重建: 风格清洗(省略号开头) + 按轮次配比 + 去重 + 划分
+├── run_v5_pipeline.sh            ⭐ 一条命令: 生成数据 -> 重建训练集 -> 训练 v5
 │
 ├── 训练与使用 ───────────────────────────────────────────
 │   ├── train_lora.py             QLoRA 微调 (Unsloth, 8GB 调优; DATA_FORMAT=chat 支持多轮)
@@ -138,6 +139,32 @@ DATA_FORMAT=chat RESPONSES_ONLY=1 NUM_EPOCHS=5 \
 OUTPUT_DIR=/home/fanta/ft_outputs/ev-v1 SMOKE_TEST=0 \
 nohup python train_lora.py > ~/train_ev_v1.log 2>&1 &
 ```
+
+### ⭐ 新一版数据集 v5+ 的标准流程
+
+**不要再用 `cat a.json b.json` 拼数据** —— 只按条数堆会打乱「回复轮次配比」，
+v4 就是这么把助手能力压到 17.5% 的（见踩坑记录第 21 条）。
+
+```bash
+export OPENAI_API_KEY=sk-xxx
+bash run_v5_pipeline.sh                  # 生成 520 条 + 重建 + 训练，一条命令
+bash run_v5_pipeline.sh --skip-gen       # 只重建 + 训练
+bash run_v5_pipeline.sh --skip-train     # 只生成 + 重建，先看数据报告
+
+# 单步也能拆开跑：
+python gen_persona_data.py --scenes personas/help_pack.json \
+    --n 520 --per-call 10 --out my_data/help_api_v2.json     # 可续传
+python rebuild_dataset.py \
+    --src help=my_data/help_api.json+my_data/help_api_v2.json:0.50 \
+    --src chat=my_data/ev3_all.json:0.42 \
+    --src intro=my_data/intro_api.json:0.05 \
+    --out my_data/ev5_all.json --keep-ellipsis 0.08
+```
+
+`rebuild_dataset.py` 会打印三段报告（清洗前 / 配比后 / 划分），**训练前必看**：
+- 开头省略号占比应在 3%~9%（默认留 8% 做变异）
+- 各来源「实际占比」要贴近目标；差太多说明该来源样本不够，会被总量砍下去
+- 均长落在 30~38 字比较健康（<25 说明闲聊又赢了）
 
 ### 评测 / 使用
 
