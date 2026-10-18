@@ -76,7 +76,7 @@ model_tuning/
 │   ├── setup_app.sh              独立 venv ~/venvs/evapp + 装依赖 + 预下 whisper
 │   ├── setup_tts.sh              独立 venv ~/venvs/tts + qwen-tts + 下 VoiceDesign 权重 (音色设计用)
 │   ├── run_app.sh                启动语音助手（前端，端口 8090）
-│   ├── start_ev.sh               一条命令起「模型服务 + 前端」，支持 --adapter / --stop
+│   ├── start_ev.sh               一条命令起「模型服务 + 前端」，支持 --adapter / --tts / --stop
 │   ├── backup.sh                 打包「数据+配置+报告+adapter」→ artifacts/*.tar.gz
 │   └── make_data_repo.sh         导出独立数据仓（data/ + reports/ + provenance README）
 │
@@ -225,7 +225,8 @@ python app/design_voice.py --lock 3                   # 锁定成 app/voice_lock
 bash setup_tts.sh --only base                         # 只补 0.6B Base 权重（1.5GB）
 python app/tts_server.py --check                      # 自检：念一句存成 voice_lock/check.wav
 python app/tts_server.py                              # 起服务 :8092
-TTS_BASE=http://127.0.0.1:8092 bash start_ev.sh       # 语音助手改用本地 TTS（不设就走 edge-tts）
+bash start_ev.sh --tts                                # 一条命令：LLM + 本地 TTS + 前端（自动把 STT 挪 CPU）
+TTS_BASE=http://127.0.0.1:8092 bash start_ev.sh       # TTS 已自己起好时，只给它地址（不设就走 edge-tts）
 
 # 起助手（另开终端先起 llama-server）
 bash run_app.sh                                       # 打开 http://localhost:8090
@@ -235,7 +236,7 @@ PORT=8091 LLM_BASE=http://127.0.0.1:8080/v1 bash run_app.sh   # 换端口 / 换�
 bash start_ev.sh                                      # 默认 adapter = ft_outputs/ev-v2
 bash start_ev.sh --adapter ~/ft_outputs/ev-v3/lora_adapter
 bash start_ev.sh --no-llm                             # 只起前端（模型服务已自己起好）
-bash start_ev.sh --stop                               # 全停，释放显存
+bash start_ev.sh --stop                               # 全停（LLM + TTS + 前端），释放显存
 ```
 
 > P1 现在是**真流式**：LLM 边生成 -> 按句切 -> edge-tts 边合成 -> 浏览器边播，

@@ -77,9 +77,12 @@ def ask(base, text, timeout=120):
     dt = time.time() - t0
     try:
         j = json.loads(raw)
-        reply = j.get("reply") or j.get("text") or ""
-        if not reply and j.get("error"):
-            raise RuntimeError(j["error"])
+        # server.py 的 /api/text 返回 {"ok":true,"user_text":..,"reply_text":..,"audio":..,"timing":..}
+        reply = (j.get("reply_text") or j.get("reply") or j.get("text") or "")
+        if not reply:
+            if j.get("error") or j.get("msg"):
+                raise RuntimeError(j.get("error") or j.get("msg"))
+            raise RuntimeError(f"返回里没有回复字段，实际键: {list(j.keys())}")
     except json.JSONDecodeError:
         reply = raw
     return reply.strip(), dt
