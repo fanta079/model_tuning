@@ -474,7 +474,7 @@ async def turn_stream(user_text: str, t0: float, t_stt: float, src: str = "voice
                 _history.append({"role": "user", "content": user_text})
                 _history.append({"role": "assistant", "content": reply})
 
-            _log_turn(user_text, reply, time.time() - t0, src)
+            _log_turn(user_text, reply, (time.time() - t0) * 1000, src)
             await emit({"t": "done", "reply": reply, "tts_error": stat["tts_err"],
                         "timing": {"stt": round(t_stt, 2),
                                    "first_token": round(stat["first_tok"], 2),
@@ -524,7 +524,11 @@ CHATLOG_DIR = Path(os.environ.get("CHATLOG_DIR", os.path.join(ROOT, "my_data", "
 
 
 def _log_turn(user_text: str, reply: str, ms: float, src: str) -> None:
-    """把一轮问答追加进当日 jsonl。绝不因为写日志而搞坏一轮对话。"""
+    """把一轮问答追加进当日 jsonl。绝不因为写日志而搞坏一轮对话。
+
+    注意 ms 是**毫秒**。早期版本把秒直接塞进了这个字段（日志里 ms=4.2），
+    读老日志时别按毫秒解释；harvest_chatlog.py 不用这个字段，所以不影响训练数据。
+    """
     if not CHATLOG_ON or not reply:
         return
     try:
@@ -563,7 +567,7 @@ async def _respond(user_text: str, t0: float, t_stt: float, src: str = "voice"):
     _history.append({"role": "user", "content": user_text})
     _history.append({"role": "assistant", "content": reply})
 
-    _log_turn(user_text, reply, time.time() - t0, src)
+    _log_turn(user_text, reply, (time.time() - t0) * 1000, src)
     print(f"[轮次] STT {t_stt:.1f}s / LLM {t_llm - t_stt:.1f}s / "
           f"总 {time.time() - t0:.1f}s | 你: {user_text[:30]} | E.V.: {reply[:30]}",
           flush=True)
