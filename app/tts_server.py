@@ -56,6 +56,7 @@ LOCAL_NAME = "Qwen3-TTS-12Hz-0.6B-Base"
 _state = {"model": None, "prompt": None, "sr": 24000, "ref_seconds": 0.0,
           "ref_text": "", "model_id": ""}
 _lock = threading.Lock()          # torch 推理不保证并发安全，串行化请求
+TRIM = os.environ.get("TTS_TRIM", "1") != "0"   # 剪掉首尾静音（默认开，见 _trim_silence）
 
 
 def _resolve_model(arg: str) -> str:
@@ -130,6 +131,32 @@ def load(model_arg, device, dtype_name, ref_audio, ref_text):
     return _state["sr"]
 
 
+def _trim_silence(audio, sr, head_ms=40, tail_ms=60, thr_ratio=0.08):
+    """剪掉首尾静音，保留一点点余量。
+
+    为什么必须剪：实测 8 个字的短句，模型会在前面吐 1190ms 空白（ref.wav 只有 30ms）。
+    server.py 是按句切分逐句推给前端的，一句 1.2 秒空白 → 三句话就是 3.6 秒死气，
+    听起来像卡死。剪首尾（不动句中停顿）是确定性的，不依赖模型行为。
+    """
+    import numpy as np
+
+    a = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if a.size == 0:
+        return a
+    fl = max(1, int(sr * 0.01))                 # 10ms 一帧
+    nf = a.size // fl
+    if nf < 3:
+        return a
+    env = np.sqrt((a[:nf * fl].reshape(nf, fl) ** 2).mean(axis=1))
+    thr = float(env.max()) * thr_ratio
+    idx = np.where(env > thr)[0]
+    if idx.size == 0:
+        return a                                 # 整段都静音？原样返回，让调用方去报错
+    start = max(0, int(idx[0]) * fl - int(sr * head_ms / 1000))
+    end = min(a.size, (int(idx[-1]) + 1) * fl + int(sr * tail_ms / 1000))
+    return a[start:end]
+
+
 def synthesize(text: str, language: str = "Chinese"):
     """返回 (wav_bytes, sample_rate)。失败抛异常。"""
     import soundfile as sf
@@ -142,13 +169,15 @@ def synthesize(text: str, language: str = "Chinese"):
         wavs, sr = _state["model"].generate_voice_clone(
             text=text, language=language, voice_clone_prompt=_state["prompt"])
         dt = time.time() - t0
-    audio = wavs[0]
+    raw_audio = wavs[0]
+    audio = _trim_silence(raw_audio, sr) if TRIM else raw_audio
     buf = io.BytesIO()
     sf.write(buf, audio, sr, format="WAV", subtype="PCM_16")
     data = buf.getvalue()
     print(f"[合成] {len(text):>3}字 {len(audio)/sr:>5.2f}s 音频 "
           f"用时 {dt:>4.2f}s  RTF {dt / max(len(audio) / sr, 1e-6):.2f}  "
-          f"| {text[:24]}", flush=True)
+          f"| 剪掉 {len(raw_audio)/sr - len(audio)/sr:>4.2f}s 首尾静音 | {text[:24]}",
+          flush=True)
     return data, sr
 
 
@@ -216,7 +245,13 @@ def main():
     ap.add_argument("--port", type=int, default=int(os.environ.get("TTS_PORT", "8092")))
     ap.add_argument("--ref", default="", help="覆盖 voice.json 里的参考音频")
     ap.add_argument("--check", action="store_true", help="合成一句自检后退出")
+    ap.add_argument("--no-trim", action="store_true",
+                    help="不剪首尾静音（默认剪；模型短句会在前面吐 ~1.2s 空白）")
     args = ap.parse_args()
+
+    global TRIM
+    if args.no_trim:
+        TRIM = False
 
     ref_audio, ref_text, _cfg = _read_voice_cfg()
     if args.ref:
