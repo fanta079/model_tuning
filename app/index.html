@@ -1338,13 +1338,23 @@ function stopRec() {
 // 原理：麦克风一直开着 -> 录音分段 -> 检测到"说过话 + 停顿 0.75s"就自动发送
 //      -> 她说完自动重新开始收音；说话期间检测到你的声音就打断她（barge-in）
 
-const VAD_SPEECH = 0.055;     // 判定"在说话"的音量阈值
-const VAD_SILENCE = 1.4;      // 停顿多久才认为你说完（宁长勿短：不允许她打断你）
-const MIN_SPEECH = 0.35;      // 至少说这么久才算一句（挡掉咳嗽/碰麦/鼠标声）
-const VAD_MAX_TURN = 20;      // 单轮最长(秒)，防止一直录
-const BARGE_LEVEL = 0.12;     // 打断阈值（她说话时你开口）
-const BARGE_HOLD = 0.25;      // 持续多久算真的打断（越小越灵敏）
-const POST_PLAY_GUARD = 260;  // 她说完到重新收音之间的间隔(ms)，防尾音被当成你说的话
+// 手机和 PC 的声学环境完全不同：扬声器和麦克风贴在一起（回声直接进麦克风）、
+// 系统 AGC 还会把底噪一起抬起来。同一套阈值在手机上只会表现为两种故障：
+//   「她还没说完就被自己的回声打断」和「你还没说完就被切成发送」。
+// 所以按设备走两套预设 —— 这不是调优，是同一个算法在两个声学环境下必须的标定。
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+               || !!(window.matchMedia && matchMedia('(pointer:coarse)').matches);
+// 想手动覆盖：地址后加 ?gain=mobile / ?gain=pc（排查时很有用）
+const _gain = (new URLSearchParams(location.search).get('gain') || '').toLowerCase();
+const MOBILE_PRESET = _gain ? (_gain === 'mobile' || _gain === '手机') : IS_MOBILE;
+
+const VAD_SPEECH = MOBILE_PRESET ? 0.10 : 0.055;  // 判定"在说话"的音量阈值
+const VAD_SILENCE = MOBILE_PRESET ? 1.2 : 1.4;    // 停顿多久才认为你说完
+const MIN_SPEECH = MOBILE_PRESET ? 0.40 : 0.35;   // 至少说这么久才算一句（挡咳嗽/碰麦）
+const VAD_MAX_TURN = 20;                          // 单轮最长(秒)
+const BARGE_LEVEL = MOBILE_PRESET ? 0.24 : 0.12;  // 打断阈值（回声大时必须抬高）
+const BARGE_HOLD = MOBILE_PRESET ? 0.40 : 0.25;   // 持续多久算真的打断
+const POST_PLAY_GUARD = MOBILE_PRESET ? 520 : 260; // 她说完到重新收音的间隔(ms)，防尾音
 
 async function startPhone() {
   if (!hasMic) { setHint('麦克风不可用：' + micWhy()); return; }
@@ -1360,7 +1370,8 @@ async function startPhone() {
   micTrack = track;
   adoptDevice(track);
   devLabel = track ? (track.label || '未知设备') : '无音频轨';
-  devInfo.textContent = '输入设备：' + devLabel;
+  devInfo.textContent = '输入设备：' + devLabel
+    + '　·　' + (MOBILE_PRESET ? '手机预设（回声阈值已抬高）' : 'PC 预设');
   devInfo.classList.add('on');
   fillDevices();
 
@@ -1654,7 +1665,8 @@ if (!hasMic) {
   addRow('', '麦克风不可用：' + micWhy() + '　已切换为键盘输入模式（回复照常朗读）。', 'sys');
 }
 
-addRow('', '点中间的球开始说话。她话不多，别指望长篇大论。', 'sys');
+addRow('', '点中间的球开始说话。她话不多，别指望长篇大论。'
+  + (MOBILE_PRESET ? '　[手机预设：回声阈值已抬高]' : ''), 'sys');
 setState('idle');
 micBlocked = true;         // 等健康检查确认组件就绪后再放开
 mic.disabled = true;

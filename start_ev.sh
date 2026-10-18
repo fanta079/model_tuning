@@ -14,7 +14,7 @@
 #   * 前端（app/server.py）在前台跑，Ctrl+C 只停前端；停全部用 --stop
 #   * 三个服务分属不同 venv：ft / tts / evapp，各自用绝对路径的 python
 #   * 显存提醒：LLM 3.4 + TTS 2.0 + whisper 1.6 ≈ 7GB，8GB 卡会紧。
-#     --tts 时脚本会自动把 STT 挪到 CPU（可用 WHISPER_DEVICE 覆盖）
+#     --tts 时 whisper 仍留 GPU（int8_float16），CPU 识别实测 17.5 秒不可用
 
 set -euo pipefail
 
@@ -153,11 +153,16 @@ if [ "$START_TTS" = 1 ]; then
         fi
         export TTS_BASE="http://127.0.0.1:${TTS_PORT}"
     fi
-    # 显存让路：三个模型挤 8GB，STT 必须下 CPU（除非用户显式指定）
+    # 显存：三个模型挤 8GB。实测把 STT 挪 CPU 会让识别慢到 17.5 秒（不可用），
+    # 所以默认仍走 GPU，用 int8_float16 把 whisper 压到 ~1.6GB：
+    #   LLM 3.4 + TTS ~1.5 + whisper 1.6 ≈ 6.5GB，刚好够。
+    # 真 OOM 了 server.py 自己会退回 CPU（get_whisper 里的三层降级），
+    # 但那时你会明显感到识别变慢 —— 那种情况下更要考虑换 small 模型。
     if [ -z "${WHISPER_DEVICE:-}" ]; then
-        export WHISPER_DEVICE=cpu
-        export WHISPER_COMPUTE="${WHISPER_COMPUTE:-int8}"
-        echo "[TTS] 已把 STT 挪到 CPU（${WHISPER_DEVICE}/${WHISPER_COMPUTE}），给 TTS 让出 ~1.6GB"
+        export WHISPER_DEVICE=cuda
+        export WHISPER_COMPUTE="${WHISPER_COMPUTE:-int8_float16}"
+        echo "[TTS] whisper 保持 GPU（${WHISPER_DEVICE}/${WHISPER_COMPUTE}），CPU 识别太慢不可用"
+        echo "      若 OOM：WHISPER_DEVICE=cpu 或换 small 模型"
     fi
     echo "[TTS] 引擎: 本地 Qwen3-TTS 克隆 → ${TTS_BASE}"
 fi
