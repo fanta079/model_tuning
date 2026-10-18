@@ -246,11 +246,12 @@
   .row.sys .bub{font:12px/1.6 var(--mono);letter-spacing:.02em;color:var(--dim)}
 
   /* ---------- 底栏 ---------- */
+  /* ---------- 底栏：只有一行状态 + 功能面板入口 ---------- */
   footer{
     grid-area:foot;border-top:1px solid var(--line2);
-    padding:8px 14px 10px;position:relative;
+    padding:0 14px;height:42px;position:relative;
     background:linear-gradient(0deg,rgba(9,15,21,.94),rgba(5,8,11,.30));
-    display:flex;flex-direction:column;gap:7px;
+    display:flex;align-items:center;gap:10px;
   }
   footer::before{
     content:"";position:absolute;left:0;right:0;top:-1px;height:1px;
@@ -258,15 +259,34 @@
     opacity:.5;
   }
   #hint{
-    /* 这行是唯一告诉你"现在该干什么"的文字，之前 9.5px + 大字距 + .44 透明度基本读不清 */
-    font:12.5px/1.5 var(--sans);letter-spacing:0;color:var(--dim);
-    text-align:center;min-height:19px;
+    flex:1;min-width:0;font:12.5px/1.4 var(--sans);color:var(--dim);
+    text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
-  .controls{display:flex;align-items:center;gap:8px;width:100%;max-width:720px;margin:0 auto}
+  #toolsBtn{
+    flex:none;height:26px;padding:0 12px;background:transparent;
+    border:1px solid var(--line2);color:var(--dim);
+    font:11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+    cursor:pointer;transition:.15s;
+  }
+  #toolsBtn:hover{border-color:rgba(127,227,255,.5);color:var(--ink-hi)}
+  #toolsBtn[aria-expanded="true"]{
+    border-color:rgba(127,227,255,.55);color:var(--cy);background:rgba(127,227,255,.07);
+  }
+  /* 功能面板：模式 / 输入 / 设备全收在这里，主界面只留球和一句话提示 */
+  #tools{
+    position:absolute;left:14px;right:14px;bottom:calc(100% + 8px);z-index:26;
+    background:rgba(6,11,15,.985);border:1px solid var(--line2);
+    padding:11px 12px 12px;display:none;
+    box-shadow:0 -14px 34px rgba(0,0,0,.55);
+  }
+  #tools.on{display:block}
+  .toolsRow{display:flex;align-items:center;gap:8px;margin-top:9px}
+  .toolsRow:first-child{margin-top:0}
+  .toolsRow > .k{flex:none;width:30px}
   #mic{
-    flex:none;height:34px;min-width:112px;padding:0 16px;
+    flex:none;height:28px;min-width:88px;padding:0 12px;
     background:rgba(127,227,255,.055);border:1px solid rgba(127,227,255,.32);
-    color:#bfe9f8;font:12px/1 var(--mono);letter-spacing:.10em;text-transform:uppercase;
+    color:#bfe9f8;font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
     cursor:pointer;transition:.15s;
   }
   #mic:hover:not(:disabled){background:rgba(127,227,255,.14);border-color:rgba(127,227,255,.66);color:#fff}
@@ -275,44 +295,45 @@
   #mic.think{background:rgba(167,139,250,.10);border-color:rgba(167,139,250,.50);color:#e3dcff}
   #mic.speak{background:rgba(94,224,168,.10);border-color:rgba(94,224,168,.52);color:#c9fee9}
   #phone{
-    flex:none;height:34px;padding:0 13px;
+    flex:none;height:28px;padding:0 12px;
     background:transparent;border:1px solid var(--line2);color:var(--dim);
-    font:11.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+    font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
     cursor:pointer;transition:.15s;
   }
   #phone:hover{border-color:rgba(127,227,255,.5);color:var(--ink-hi)}
   #phone.on{background:rgba(94,224,168,.10);border-color:rgba(94,224,168,.52);color:#c9fee9}
   #typeIn{
-    flex:1;min-width:0;height:34px;padding:0 11px;
+    flex:1;min-width:0;height:28px;padding:0 10px;
     background:rgba(8,14,19,.85);border:1px solid var(--line2);
-    color:var(--ink);font:13.5px/1 var(--sans);outline:none;transition:.15s;
+    color:var(--ink);font:12.5px/1 var(--sans);outline:none;transition:.15s;
   }
-  #typeIn::placeholder{color:rgba(206,224,236,.44)}
+  #typeIn::placeholder{color:rgba(206,224,236,.40)}
   #typeIn:focus{border-color:rgba(127,227,255,.55);box-shadow:0 0 0 1px rgba(127,227,255,.12)}
   #reset{
-    flex:none;height:34px;padding:0 10px;background:none;border:none;
-    color:var(--dim);font:11px/1 var(--mono);letter-spacing:.10em;
+    flex:none;height:28px;padding:0 8px;background:none;border:none;
+    color:var(--dim);font:10.5px/1 var(--mono);letter-spacing:.14em;
     text-transform:uppercase;cursor:pointer;transition:.15s;
   }
   #reset:hover{color:var(--ink-hi)}
-  .devRow{display:none;width:100%;max-width:720px;margin:0 auto;justify-content:flex-end;gap:6px}
+  .devRow{display:none;gap:8px}
   .devRow.on{display:flex}
   #dev{
+    flex:1;min-width:0;
     background:rgba(8,14,19,.9);color:var(--ink);border:1px solid var(--line2);
-    font:11.5px/1.4 var(--mono);letter-spacing:.02em;padding:4px 6px;max-width:270px;outline:none;
+    font:11px/1.4 var(--mono);padding:3px 6px;outline:none;
   }
   #devRefresh{
-    background:none;border:1px solid var(--line2);color:var(--dim);
-    font:10.5px/1 var(--mono);letter-spacing:.10em;text-transform:uppercase;
+    flex:none;background:none;border:1px solid var(--line2);color:var(--dim);
+    font:10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
     padding:4px 8px;cursor:pointer;
   }
   #devRefresh:hover{border-color:rgba(127,227,255,.45);color:var(--ink)}
   #diag{
-    display:none;position:absolute;left:14px;right:14px;bottom:100%;margin-bottom:6px;
-    font:11.5px/1.6 var(--mono);color:rgba(206,224,236,.82);
+    display:none;margin-top:10px;
+    font:10.5px/1.6 var(--mono);color:rgba(206,224,236,.82);
     background:rgba(4,8,11,.97);border:1px solid var(--line2);
-    padding:9px 11px;white-space:pre-wrap;word-break:break-all;max-height:38vh;overflow:auto;
-    z-index:30;
+    padding:8px 10px;white-space:pre-wrap;word-break:break-all;
+    max-height:26vh;overflow:auto;
   }
   #diag.on{display:block}
 
@@ -396,18 +417,26 @@
 </aside>
 
 <footer>
-  <div id="hint">点中间的球，或按下面的按钮开始说话</div>
-  <div class="controls">
-    <button id="mic" disabled>准备中</button>
-    <button id="phone" title="电话模式：不用按键，停顿自动接话">电话</button>
-    <input id="typeIn" placeholder="也可以打字，回车发送" autocomplete="off">
-    <button id="reset">清空</button>
+  <div id="hint">点球说话，说完再点一下发送；她说的时候点球可以打断</div>
+  <button id="toolsBtn" aria-expanded="false" aria-controls="tools">功能</button>
+  <div id="tools" aria-hidden="true">
+    <div class="toolsRow">
+      <span class="k">模式</span>
+      <button id="mic" disabled>准备中</button>
+      <button id="phone" title="电话模式：不用按键，停顿自动接话">电话</button>
+    </div>
+    <div class="toolsRow">
+      <span class="k">输入</span>
+      <input id="typeIn" placeholder="打字也行，回车发送" autocomplete="off">
+      <button id="reset">清空</button>
+    </div>
+    <div class="toolsRow devRow">
+      <span class="k">设备</span>
+      <select id="dev" title="选择输入设备"></select>
+      <button id="devRefresh" title="授权并刷新设备名">刷新</button>
+    </div>
+    <pre id="diag"></pre>
   </div>
-  <div class="devRow">
-    <select id="dev" title="选择输入设备"></select>
-    <button id="devRefresh" title="授权并刷新设备名">刷新</button>
-  </div>
-  <pre id="diag"></pre>
 </footer>
 
 <script>
@@ -433,6 +462,8 @@ const devRow = document.querySelector('.devRow');
 const devRefresh = document.getElementById('devRefresh');
 const diagEl = document.getElementById('diag');
 const buildStamp = document.getElementById('buildStamp');
+const toolsEl = document.getElementById('tools');
+const toolsBtn = document.getElementById('toolsBtn');
 
 const octx = orb.getContext('2d');
 const wctx = wave.getContext('2d');
@@ -1620,6 +1651,14 @@ function setLogOpen(open) {
 
 logToggle.onclick = () => setLogOpen(!logOpen);
 
+// 功能面板：模式 / 输入 / 设备都收在这里，主界面只留球和一句提示
+function setToolsOpen(open) {
+  toolsEl.classList.toggle('on', open);
+  toolsEl.setAttribute('aria-hidden', String(!open));
+  toolsBtn.setAttribute('aria-expanded', String(open));
+}
+toolsBtn.onclick = () => setToolsOpen(!toolsEl.classList.contains('on'));
+
 // ==================== 事件 ====================
 function onTap() {
   if (phoneOn) return;
@@ -1641,7 +1680,9 @@ typeIn.addEventListener('keydown', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && logOpen) setLogOpen(false);
+  if (e.key !== 'Escape') return;
+  if (toolsEl.classList.contains('on')) setToolsOpen(false);
+  else if (logOpen) setLogOpen(false);
 });
 
 // 球体本身可聚焦，键盘也能开始/结束说话
