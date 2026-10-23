@@ -643,7 +643,7 @@ function paintTelemetry() {
   try { pct = Math.round(Math.min(1, level()) * 100); } catch (e) { pct = 0; }
   tLevel.textContent = pct + '%';
   if (tLevelFill) tLevelFill.style.width = pct + '%';
-  tVad.textContent  = phoneOn ? 'armed' : 'offline';
+  tVad.textContent  = phoneOn ? ('armed ' + vadThreshold().toFixed(2)) : 'offline';
   tMode.textContent = phoneOn ? 'full-duplex' : 'half-duplex';
   const sec = Math.floor((Date.now() - BOOT_AT) / 1000);
   tClock.textContent = String(Math.floor(sec / 60)).padStart(2, '0')
@@ -1241,12 +1241,26 @@ function loop() {
   if (phoneOn) {
     if (state === 'recording') {
       const a = analyserLevel(micAnalyser);
-      if (a > VAD_SPEECH) {
+      const thr = vadThreshold();
+      if (a > thr) {
+        loudRun += 1;
+      } else {
+        loudRun = 0;
+        // 只在"还没开始说话"时跟踪底噪，否则自己的声音会把底噪带高，越说越难触发
+        if (!hasSpeech) noiseFloor = noiseFloor * 0.97 + Math.min(a, 0.20) * 0.03;
+      }
+      // 起手要连续 2 帧过阈（约 60ms），挡掉碰麦、键盘这种单帧尖峰；
+      // 已经在说话时则只看当帧，免得句中换气把 hasSpeech 抖没
+      const speakingNow = hasSpeech ? (a > thr) : (loudRun >= 2);
+      if (speakingNow) {
         if (!speechFrom) speechFrom = now;
         hasSpeech = true;
         silenceFrom = 0;
       } else if (hasSpeech) {
-        if (!silenceFrom) silenceFrom = now;
+        // 只有"真的很安静"才开始计静音。刚跌破阈值就计数的话，
+        // 说话声拖尾、语尾气声都会被当成停顿，0.45 秒就太冒进
+        if (a > thr * 0.55) { silenceFrom = 0; }
+        else if (!silenceFrom) silenceFrom = now;
         else if (now - silenceFrom > VAD_SILENCE) {
           // 只说了"咳"一声这种极短的，判为噪声，继续听，不发送
           if (now - speechFrom >= MIN_SPEECH) endPhoneTurn();
@@ -1566,16 +1580,31 @@ function stopRec() {
 // 所以按设备走两套预设 —— 这不是调优，是同一个算法在两个声学环境下必须的标定。
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
                || !!(window.matchMedia && matchMedia('(pointer:coarse)').matches);
+// 自适应底噪：安静时用极慢的滑动平均跟踪环境噪声，说话阈值 = max(下界, 底噪×2.5)。
+// 为什么这比固定阈值强：固定阈值在安静房间太钝（要 0.055 才认），在空调/风扇房里又太灵
+// （一直触发）。自适应能同时对付两边，所以判停才敢从 0.85 秒压到 0.45 秒。
+let noiseFloor = 0.02;
+function vadThreshold() {
+  // 底噪封顶 0.08：万一环境太吵把它推高，也不能高到永远触发不了
+  return Math.max(VAD_SPEECH, Math.min(noiseFloor, 0.08) * 2.5);
+}
+// 起手确认：连续 N 帧都过阈才算真的开口，挡掉键盘敲击、碰麦这种单帧尖峰
+let loudRun = 0;
+
 // 想手动覆盖：地址后加 ?gain=mobile / ?gain=pc（排查时很有用）
 const _gain = (new URLSearchParams(location.search).get('gain') || '').toLowerCase();
 const MOBILE_PRESET = _gain ? (_gain === 'mobile' || _gain === '手机') : IS_MOBILE;
 
-const VAD_SPEECH = MOBILE_PRESET ? 0.10 : 0.055;  // 判定"在说话"的音量阈值
+// 判定"在说话"的音量**下界**。实际阈值是自适应的，见 vadThreshold()。
+const VAD_SPEECH = MOBILE_PRESET ? 0.10 : 0.055;
 // 停顿多久算"你说完了"。这个数字直接等于每回合的**固定死时间**：
 // 1.4s 意味着你说完还要干等 1.4 秒才开始识别 —— 电话感的头号杀手。
-// 0.85 是实测能接受的下限：再短会把句中换气切成两个半句。
-const VAD_SILENCE = MOBILE_PRESET ? 0.90 : 0.85;
-const MIN_SPEECH = MOBILE_PRESET ? 0.40 : 0.35;   // 至少说这么久才算一句（挡咳嗽/碰麦）
+// 现在给到 0.45/0.55：敢这么短，靠的是下面那个自适应阈值 + 语音起始确认，
+// 不再是"音量一掉就数秒"的裸判断。想手动调：地址后加 ?sil=0.6
+const _silOverride = parseFloat(new URLSearchParams(location.search).get('sil') || '');
+const VAD_SILENCE = (isFinite(_silOverride) && _silOverride > 0.1 && _silOverride < 3)
+  ? _silOverride : (MOBILE_PRESET ? 0.55 : 0.45);
+const MIN_SPEECH = MOBILE_PRESET ? 0.40 : 0.30;   // 至少说这么久才算一句（挡咳嗽/碰麦）
 const VAD_MAX_TURN = 20;                          // 单轮最长(秒)
 const BARGE_LEVEL = MOBILE_PRESET ? 0.24 : 0.12;  // 打断阈值（回声大时必须抬高）
 const BARGE_HOLD = MOBILE_PRESET ? 0.40 : 0.25;   // 持续多久算真的打断
@@ -1613,6 +1642,7 @@ function beginPhoneTurn() {
   speechFrom = 0;
   silenceFrom = 0;
   bargeFrom = 0;
+  loudRun = 0;                 // 不清的话，上一轮残留的计数会让新一轮立刻"开口"
   phoneChunks = [];
 
   const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
