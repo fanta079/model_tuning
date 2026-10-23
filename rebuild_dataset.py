@@ -112,7 +112,11 @@ def repair_selfintro(exs):
         if len(convs) >= 2:
             u = str(convs[0].get("content", "")).strip()
             a = str(convs[1].get("content", "")).strip()
-            if SELF_INTRO_RE.match(u) and (len(a) <= 14 or BRUSHOFF_RE.search(a)):
+            # 只丢"短得没法接话"的：<15 字一律丢；带挡回语的再放宽到 <26 字。
+            # 不能见 BRUSHOFF 就丢 —— "离这儿不远。平时不太出门，看书的时候多。
+            # 你呢，忽然问这个做什么。" 这种先答后回问是好的，丢了可惜。
+            if SELF_INTRO_RE.match(u) and (len(a) <= 14 or
+                                           (BRUSHOFF_RE.search(a) and len(a) < 26)):
                 drop += 1
                 continue
         keep.append(ex)
