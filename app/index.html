@@ -1445,7 +1445,7 @@ async function checkHealth() {
   } catch (e) {
     health.innerHTML = '<span class="bad">后端连不上</span>';
     micBlocked = true; mic.disabled = true; mic.textContent = '离线';
-    setHint('后端没起来？确认 run_app.sh 正在运行');
+    setHint('后端没起来 —— 在 WSL 里跑 bash start_ev.sh');
   }
 }
 
