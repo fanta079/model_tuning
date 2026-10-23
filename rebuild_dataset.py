@@ -90,6 +90,35 @@ def stats(exs):
     )
 
 
+# ---------------------------------------------------------------- 自述修复
+# 为什么单独修这一块：自述是**最高频**的问题之一，而 ev3 里 30 条自述样本
+# 大多是敷衍腔（「E.V.。……就这样。」「你问这个做什么。」），
+# 后者甚至违反人设卡（三·五② 明令禁止用反问挡回）。
+# v5 忠实学会了这个毛病，真实对话里问「介绍一下你自己」就得到「E.V.。……就这样。」。
+# 处理方式：**整条丢掉**，由 v6 包生成够多的好样本补回来。
+# 不在原句上改词 —— 改出来的句子风格是伪的，模型学得更歪。
+SELF_INTRO_RE = re.compile(
+    r"^\s*(?:请问)?(?:你|您)?\s*(?:是谁|叫什么|叫啥|什么名字|名字是什么|"
+    r"介绍一下自己|介绍下自己|介绍你自己|做个?自我介绍|自我介绍一下|"
+    r"能做什么|能帮我做什么|会做什么|能干什么|能帮上什么忙)")
+BRUSHOFF_RE = re.compile(r"问这个做什么|问那么多|不重要|没什么好说|没什么可说|别问|套什么话")
+
+
+def repair_selfintro(exs):
+    """丢掉「自述题 + 敷衍答」的整条样本。返回 (保留, 丢弃数)。"""
+    keep, drop = [], 0
+    for ex in exs:
+        convs = ex.get("conversations") or []
+        if len(convs) >= 2:
+            u = str(convs[0].get("content", "")).strip()
+            a = str(convs[1].get("content", "")).strip()
+            if SELF_INTRO_RE.match(u) and (len(a) <= 14 or BRUSHOFF_RE.search(a)):
+                drop += 1
+                continue
+        keep.append(ex)
+    return keep, drop
+
+
 # ---------------------------------------------------------------- 风格清洗
 
 def strip_ellipsis(reply, rng, keep_rate):
@@ -238,6 +267,8 @@ def main():
     ap.add_argument("--allow-repeat", action="store_true",
                     help="来源样本不足时允许循环复用（会重复，慎用）")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--no-fix-selfintro", action="store_true",
+                    help="保留「自述题 + 敷衍答」的样本（默认丢弃，见 repair_selfintro）")
     ap.add_argument("--dry-run", action="store_true", help="只打印报告，不写文件")
     args = ap.parse_args()
 
@@ -256,10 +287,14 @@ def main():
             print(f"{s['name']:8s} 合并 {len(s['paths'])} 个文件 → {len(raw)} 条")
         before = stats(raw)
         cleaned, info = clean_dataset(raw, args.keep_ellipsis, args.seed)
+        si = 0
+        if not args.no_fix_selfintro:
+            cleaned, si = repair_selfintro(cleaned)
         cleaned, dup = dedupe(cleaned)
         after = stats(cleaned)
         print(f"{s['name']:8s} 样本 {len(raw):4d} → {len(cleaned):4d}"
-              f"（去重 {dup}，改开头 {info['changed']}，丢弃 {info['dropped']}）")
+              f"（去重 {dup}，改开头 {info['changed']}，丢弃 {info['dropped']}"
+              + (f"，敷衍自述 {si}" if si else "") + "）")
         print(f"         均长 {before['avg']:5.1f} → {after['avg']:5.1f}"
               f"　……开头 {before['ell']:5.1f}% → {after['ell']:5.1f}%")
         pools.append((s["name"], cleaned, s["weight"]))
