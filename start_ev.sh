@@ -123,6 +123,7 @@ if [ "$START_TTS" = 1 ]; then
     elif curl -sf -m 2 "http://127.0.0.1:${TTS_PORT}/health" >/dev/null 2>&1; then
         echo "[TTS] 端口 ${TTS_PORT} 已有服务，跳过启动"
         export TTS_BASE="http://127.0.0.1:${TTS_PORT}"
+        export TTS_MODE="${TTS_MODE:-local}"
     else
         if [ ! -x "$TTS_VENV/bin/python" ]; then
             echo "[TTS] 找不到 $TTS_VENV/bin/python"
@@ -182,7 +183,11 @@ if [ "$START_TTS" = 1 ]; then
         echo "[TTS] whisper 保持 GPU（${WHISPER_DEVICE}/${WHISPER_COMPUTE}），CPU 识别太慢不可用"
         echo "      若 OOM：WHISPER_DEVICE=cpu 或换 small 模型"
     fi
-    echo "[TTS] 引擎: 本地 Qwen3-TTS 克隆 → ${TTS_BASE}"
+    # 显式声明用本地引擎。server.py 的默认已改成 cloud（低延迟优先），
+    # 所以 --tts 必须自己把 TTS_MODE 顶回 local，否则起了本地服务却还在走云端
+    export TTS_MODE="${TTS_MODE:-local}"
+    echo "[TTS] 引擎: 本地 Qwen3-TTS 克隆 → ${TTS_BASE}（TTS_MODE=${TTS_MODE}）"
+    echo "      提醒：本地合成 RTF≈4，首句要 4~9 秒。要低延迟就别加 --tts"
 fi
 
 # ---------------- 2) 前端 ----------------

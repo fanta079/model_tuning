@@ -126,20 +126,80 @@ def bench_turn(text, repeat):
                  statistics.median([m["首音"] for m in agg if m["首音"] == m["首音"]] or [0])))
 
 
+
+def bench_voice(wav_path, repeat):
+    """完整语音回合：把 wav 当成麦克风录音 POST 给 /api/stream/turn。
+
+    没有麦克风也能测 —— 这条路径和真说话走的是同一个端点、同一套流水线，
+    唯一的差别是省掉了浏览器端的 VAD 判停时间（那部分要真说话才量得到）。
+    """
+    import uuid
+    print("\n== 语音回合（%s）==" % APP)
+    print("   音频 %s" % wav_path)
+    boundary = "----ev" + uuid.uuid4().hex
+    raw = open(wav_path, "rb").read()
+    head = ("--%s\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"voice.wav\"\r\n"
+            "Content-Type: audio/wav\r\n\r\n" % boundary).encode()
+    tail = ("\r\n--%s--\r\n" % boundary).encode()
+    body = head + raw + tail
+
+    for i in range(repeat):
+        t0 = time.time()
+        req = urllib.request.Request(APP + "/api/stream/turn", data=body,
+                                     headers={"Content-Type": "multipart/form-data; boundary=" + boundary})
+        marks, audio_at = {}, []
+        try:
+            r = urllib.request.urlopen(req, timeout=180)
+            for line in r:
+                line = line.decode("utf-8", "ignore").strip()
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    ev = json.loads(line[5:].strip())
+                except Exception:
+                    continue
+                dt = time.time() - t0
+                if ev.get("t") == "meta":
+                    marks["听成"] = ev.get("user_text", "")
+                elif ev.get("t") == "delta":
+                    marks.setdefault("首字", dt)
+                elif ev.get("t") == "audio":
+                    audio_at.append(dt)
+                elif ev.get("t") == "done":
+                    marks["结束"] = dt
+                    marks["timing"] = ev.get("timing")
+
+        except Exception as e:
+            print("  请求失败：%s" % e)
+            return
+        print("  第 %d 轮：首字 %.2fs  首音 %.2fs  音频段 %d  结束 %.2fs"
+              % (i + 1, marks.get("首字", 0), audio_at[0] if audio_at else float("nan"),
+                 len(audio_at), marks.get("结束", 0)))
+        if marks.get("听成"):
+            print("          识别为：%s" % marks["听成"])
+        if marks.get("timing"):
+            print("          服务端 timing %s" % marks["timing"])
+
 def main():
     ap = argparse.ArgumentParser(description="E.V. 语音链路耗时基准")
     ap.add_argument("--text", default="今天有点困，但是还有一堆事没做完。")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--tts-only", action="store_true", help="只测 TTS 引擎，不走 LLM")
     ap.add_argument("--turn-only", action="store_true", help="只测完整回合")
+    ap.add_argument("--voice", nargs="?", const="app/voice_lock/check.wav", default=None,
+                    metavar="WAV", help="把一段 wav 当作你说的话，测完整语音回合（默认用内置样例）")
     args = ap.parse_args()
 
-    sentences = ["嗯，在。", args.text, "这个嘛，我觉得可以先把手头那件事收个尾，剩下的明天再说。"]
-    if not args.turn_only:
-        bench_tts(sentences, args.repeat)
-    if not args.tts_only:
-        bench_turn(args.text, args.repeat)
+    if args.voice:
+        bench_voice(args.voice, args.repeat)
+    else:
+        sentences = ["嗯，在。", args.text, "这个嘛，我觉得可以先把手头那件事收个尾，剩下的明天再说。"]
+        if not args.turn_only:
+            bench_tts(sentences, args.repeat)
+        if not args.tts_only:
+            bench_turn(args.text, args.repeat)
     print("\n判读指南")
+    print("  语音回合 = VAD 判停(约 0.85s，浏览器端) + 识别 + 首字 + 首段 TTS")
     print("  首音 < 1.5s  流畅；1.5~3s 能接受；> 4s 就是「文字读完声音才来」")
     print("  固定开销 > 2s：短句也慢，问题在模型/加载路径，不在切句")
     print("  RTF > 1：合成比播放还慢，句子一多必然越拖越后")

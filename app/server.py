@@ -100,9 +100,12 @@ TTS_LANG = os.environ.get("TTS_LANG", "Chinese")
 #   off   : 不朗读，只出文字
 # 为什么要有 off：打字的时候人本来就在看字，声音晚 8 秒反而是干扰。
 # 默认值尊重原来的启动方式：起了本地服务就是 local，没起就是 cloud。
+# 默认 cloud（edge-tts）。改这个默认值是有依据的：本地 Qwen3-TTS 0.6B 在
+# 4060Ti 上实测 RTF≈4（19 个字要 9.2 秒），voice 回合的首段音频要等到 15 秒 ——
+# 那不叫实时语音。edge-tts 首包 0.3~0.5s，先保证"能对话"。
+# 想要她的克隆音色：TTS_MODE=local（start_ev.sh --tts 会自动这么设）。
 _TTS_MODE_ENV = os.environ.get("TTS_MODE", "").strip().lower()
-TTS_MODE = _TTS_MODE_ENV if _TTS_MODE_ENV in ("local", "cloud", "off") \
-           else ("local" if TTS_BASE else "cloud")
+TTS_MODE = _TTS_MODE_ENV if _TTS_MODE_ENV in ("local", "cloud", "off") else "cloud"
 if TTS_MODE == "local" and not TTS_BASE:
     TTS_MODE = "cloud"          # 没起本地服务还要 local，只能退回云端，别静默失败
 
@@ -115,9 +118,9 @@ if not SYSTEM_PROMPT and os.path.isfile(SYSTEM_FILE):
 MAX_HISTORY = int(os.environ.get("MAX_HISTORY", "12"))   # 保留最近几轮上下文
 
 # ---- 流式切句参数（想调"多快开口"改这三个）----
-MIN_SEG = int(os.environ.get("MIN_SEG", "6"))            # 少于这么多字不单独切（"嗯。"单念很怪）
+MIN_SEG = int(os.environ.get("MIN_SEG", "4"))            # 少于这么多字不单独切（"嗯。"单念很怪）
 MAX_SEG = int(os.environ.get("MAX_SEG", "42"))           # 一直没标点，最多攒这么长就硬切
-EAGER_DELAY = float(os.environ.get("EAGER_DELAY", "0.55"))  # 首句等这么久还没标点 -> 先切给 TTS
+EAGER_DELAY = float(os.environ.get("EAGER_DELAY", "0.38"))  # 首句等这么久还没标点 -> 先切给 TTS
 
 app = FastAPI(title="E.V. Voice")
 

@@ -275,6 +275,11 @@
     overflow:hidden;transition:max-height .28s cubic-bezier(.2,.7,.3,1),opacity .2s;
   }
   #logWrap .sec{margin-bottom:7px}
+  /* 上一轮的分段耗时。放在标题右边而不是藏进诊断 —— 调延迟时必须一眼看见 */
+  #lat{
+    font:9px/1 var(--mono);letter-spacing:.06em;color:rgba(186,214,232,.42);
+    text-transform:none;white-space:nowrap;
+  }
   body.nolog #logWrap{height:0;min-height:0;max-height:0;opacity:0;overflow:hidden;pointer-events:none}
   #log{
     flex:1;min-height:0;overflow-y:auto;padding:0 4px 4px 2px;
@@ -536,7 +541,7 @@
   </div>
 
   <section id="logWrap">
-    <div class="sec">transcript</div>
+    <div class="sec">transcript<span id="lat" title="上一轮的分段耗时"></span></div>
     <div id="log" aria-hidden="true"></div>
   </section>
 </main>
@@ -1309,6 +1314,22 @@ function setState(s) {
   }
 }
 
+// 把服务端的分段耗时写成一行读数。单位统一成秒、保留一位小数。
+// stt 在纯文字输入时是 0，就不显示 —— 免得让人以为哪儿坏了。
+function paintLatency(t) {
+  const el = document.getElementById('lat');
+  if (!el || !t) return;
+  const parts = [];
+  if (t.stt > 0.01) parts.push('听 ' + t.stt.toFixed(1));
+  if (t.first_token) parts.push('首字 ' + t.first_token.toFixed(1));
+  if (t.first_audio) parts.push('出声 ' + t.first_audio.toFixed(1));
+  if (t.total) parts.push('全程 ' + t.total.toFixed(1));
+  el.textContent = parts.length ? parts.join(' · ') + ' s' : '';
+  el.style.color = (t.first_audio && t.first_audio > 4)
+    ? 'rgba(255,179,71,.75)'      // 超过 4 秒标黄：这是"文字读完声音才来"的区间
+    : 'rgba(186,214,232,.42)';
+}
+
 function addRow(who, text, cls, live, before) {
   const row = document.createElement('div');
   row.className = 'row ' + cls;
@@ -1550,12 +1571,15 @@ const _gain = (new URLSearchParams(location.search).get('gain') || '').toLowerCa
 const MOBILE_PRESET = _gain ? (_gain === 'mobile' || _gain === '手机') : IS_MOBILE;
 
 const VAD_SPEECH = MOBILE_PRESET ? 0.10 : 0.055;  // 判定"在说话"的音量阈值
-const VAD_SILENCE = MOBILE_PRESET ? 1.2 : 1.4;    // 停顿多久才认为你说完
+// 停顿多久算"你说完了"。这个数字直接等于每回合的**固定死时间**：
+// 1.4s 意味着你说完还要干等 1.4 秒才开始识别 —— 电话感的头号杀手。
+// 0.85 是实测能接受的下限：再短会把句中换气切成两个半句。
+const VAD_SILENCE = MOBILE_PRESET ? 0.90 : 0.85;
 const MIN_SPEECH = MOBILE_PRESET ? 0.40 : 0.35;   // 至少说这么久才算一句（挡咳嗽/碰麦）
 const VAD_MAX_TURN = 20;                          // 单轮最长(秒)
 const BARGE_LEVEL = MOBILE_PRESET ? 0.24 : 0.12;  // 打断阈值（回声大时必须抬高）
 const BARGE_HOLD = MOBILE_PRESET ? 0.40 : 0.25;   // 持续多久算真的打断
-const POST_PLAY_GUARD = MOBILE_PRESET ? 520 : 260; // 她说完到重新收音的间隔(ms)，防尾音
+const POST_PLAY_GUARD = MOBILE_PRESET ? 320 : 180; // 她说完到重新收音的间隔(ms)，防尾音；越短接话越快
 
 async function startPhone() {
   if (!hasMic) { setHint('麦克风不可用：' + micWhy()); return; }
@@ -1736,6 +1760,7 @@ function onEvent(t, ev, bubble) {
     t.done = true;
     t.timing = ev.timing || {};
     if (ev.tts_error) t.ttsErr = ev.tts_error;
+    paintLatency(ev.timing);
     if (!player.srcs.length && !pendingAudio) finishTurn(t);  // 极端情况：TTS 全失败
   } else if (ev.t === 'error') {
     bubble.classList.remove('live');
