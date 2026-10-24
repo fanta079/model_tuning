@@ -113,6 +113,28 @@ bash /mnt/e/VMOS_workspace/model_tuning/setup-ml-env-uv.sh
 
 使用环境前：`source ~/venvs/ft/bin/activate`。
 
+### 三个 venv 各管一段（别混用，装错会牵连训练）
+
+| 环境 | 谁用 | 怎么进 |
+|---|---|---|
+| `~/venvs/ft` | 训练 / LLM 推理（`serve_hf.py`、`train_lora.py`） | `source ~/venvs/ft/bin/activate` |
+| `~/venvs/evapp` | 语音助手后端（`app/server.py`：fastapi + faster-whisper + edge-tts） | `source ~/venvs/evapp/bin/activate` |
+| `~/venvs/tts` | 本地 TTS 克隆（`app/tts_server.py`：qwen-tts） | `source ~/venvs/tts/bin/activate` |
+
+**跑服务不需要激活任何环境**：`start_ev.sh` 用绝对路径调三个 venv 的 python，
+最后由 `run_app.sh` 起前端并自动设置 `LD_LIBRARY_PATH`。
+
+⚠️ **手动起后端时要自己补这一步**，否则 faster-whisper 找不到 CUDA 12 的
+cublas/cudnn（torch 是 cu13，soname 对不上），会静默降级到 CPU —— 识别从 0.3 秒变 17.5 秒：
+
+```bash
+source ~/venvs/evapp/bin/activate
+export LD_LIBRARY_PATH="$(ls -d ~/venvs/evapp/lib/python3*/site-packages/nvidia/*/lib | tr '\n' ':')${LD_LIBRARY_PATH:-}"
+python app/server.py
+```
+
+退出：`deactivate`。查当前用的是哪个环境：`which python`。
+
 **注意**：`train_lora.py` 依赖的 **Unsloth 不在一键脚本里**，环境重建后需单独执行 `uv pip install unsloth`（它会自带 triton 等依赖，可能联动升级 torch —— 装完先 `uv pip list | grep torch` 确认）。
 
 ## 5. 常用命令 (WSL 内)
