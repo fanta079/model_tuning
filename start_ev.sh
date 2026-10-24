@@ -22,7 +22,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FT_VENV="${FT_VENV:-$HOME/venvs/ft}"
 EV_VENV="${EV_VENV:-$HOME/venvs/evapp}"
 TTS_VENV="${TTS_VENV:-$HOME/venvs/tts}"
-ADAPTER="${ADAPTER:-$HOME/ft_outputs/ev-v2/lora_adapter}"
+# 默认 adapter 自动挑「版本号最大的 ev-vN」。
+# 之前写死 ev-v2，训完 v5 之后直接起服务还是老模型 —— 人设明显不对，
+# 但报错是没有的，只有你自己觉得"怎么变笨了"。这种默认值必须跟着产出走。
+_default_adapter() {
+    local best
+    best=$(ls -d "$HOME"/ft_outputs/ev-v*/lora_adapter 2>/dev/null | sort -V | tail -1)
+    echo "${best:-$HOME/ft_outputs/ev-v2/lora_adapter}"
+}
+ADAPTER="${ADAPTER:-$(_default_adapter)}"
 LLM_PORT="${LLM_PORT:-8080}"
 APP_PORT="${APP_PORT:-8090}"
 TTS_PORT="${TTS_PORT:-8092}"

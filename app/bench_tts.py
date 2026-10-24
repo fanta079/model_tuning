@@ -28,10 +28,14 @@
 
 import argparse
 import json
+import os
 import statistics
 import sys
 import time
 import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_WAV = os.path.join(HERE, "voice_lock", "check.wav")
 
 APP = "http://127.0.0.1:8090"
 TTS = "http://127.0.0.1:8092"
@@ -50,7 +54,8 @@ def bench_tts(sentences, repeat):
         h = json.loads(urllib.request.urlopen(TTS + "/health", timeout=5).read())
     except Exception as e:
         print("  连不上 TTS 服务：%s" % e)
-        print("  先起：bash start_ev.sh --tts")
+        print("  本地克隆引擎要用 --tts 才会起：bash start_ev.sh --tts")
+        print("  （默认走云端 edge-tts，不需要 8092，直接 --voice 测整轮就行）")
         return
     print("  引擎 %s  参考音频 %ss  模型 %s" % (h.get("engine"), h.get("ref_seconds"),
                                               str(h.get("model"))[-46:]))
@@ -110,6 +115,7 @@ def bench_turn(text, repeat):
                     marks["timing"] = ev.get("timing")
         except Exception as e:
             print("  请求失败：%s" % e)
+            print("  后端没起？在 WSL 里：bash start_ev.sh")
             return
         marks["首音"] = audio_at[0] if audio_at else float("nan")
         print("  第 %d 轮：首字 %.2fs  首音 %.2fs  音频段 %d  结束 %.2fs"
@@ -171,6 +177,7 @@ def bench_voice(wav_path, repeat):
 
         except Exception as e:
             print("  请求失败：%s" % e)
+            print("  后端没起？在 WSL 里：bash start_ev.sh")
             return
         print("  第 %d 轮：首字 %.2fs  首音 %.2fs  音频段 %d  结束 %.2fs"
               % (i + 1, marks.get("首字", 0), audio_at[0] if audio_at else float("nan"),
@@ -186,7 +193,7 @@ def main():
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--tts-only", action="store_true", help="只测 TTS 引擎，不走 LLM")
     ap.add_argument("--turn-only", action="store_true", help="只测完整回合")
-    ap.add_argument("--voice", nargs="?", const="app/voice_lock/check.wav", default=None,
+    ap.add_argument("--voice", nargs="?", const=DEFAULT_WAV, default=None,
                     metavar="WAV", help="把一段 wav 当作你说的话，测完整语音回合（默认用内置样例）")
     args = ap.parse_args()
 
